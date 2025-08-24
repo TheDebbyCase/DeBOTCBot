@@ -89,7 +89,7 @@ namespace DeBOTCBot
             storytellerChannel = await server.CreateChannelAsync("Storyteller's Crypt", DiscordChannelType.Voice, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(storytellerRole) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(genericPlayerRole) { Denied = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
             Log("Creating Town channels");
             DiscordChannel townCategory = await server.CreateChannelAsync("Town", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(storytellerRole) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(genericPlayerRole) { Allowed = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
-            townChannel = await server.CreateChannelAsync("Town Centre", DiscordChannelType.Voice, townCategory, userLimit: 0);
+            townChannel = await server.CreateChannelAsync("Town Square", DiscordChannelType.Voice, townCategory, userLimit: 0);
             if (townChannels == null || (townChannels != null && townChannels.Count == 0))
             {
                 townChannels = DeBOTCBot.DefaultTownData();

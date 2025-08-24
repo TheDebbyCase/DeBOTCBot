@@ -53,3 +53,6 @@
 */[Aa]ssets/[Ss]treamingAssets/aa/*
 */.zip
 *.zip
+/bin
+/obj
+/Properties

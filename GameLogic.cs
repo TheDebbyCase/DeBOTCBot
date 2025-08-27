@@ -64,6 +64,30 @@
             orderOtherDescription = otherDesc;
         }
     }
+    public class Player
+    {
+        public Player(int length, int index, Token character)
+        {
+            totalPlayers = length;
+            seat = index;
+            token = character;
+            int left = seat - 1;
+            int right = seat + 1;
+            if (left < 0)
+            {
+                left = totalPlayers - 1;
+            }
+            if (right >= totalPlayers)
+            {
+                right = 0;
+            }
+            neighbours = (left, right);
+        }
+        public int totalPlayers;
+        public int seat;
+        public Token token;
+        public (int, int) neighbours;
+    }
     public class BOTCCharacters
     {
         public static readonly Dictionary<string, Token> allTokens = GenerateTokens();
@@ -418,7 +442,7 @@
                             specialCounts[(int)CharacterType.Minion] -= removed;
                             info.Log($"(Kazali) Removing Minions");
                             script.Remove(token);
-                            script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType == CharacterType.Demon || x.characterType == CharacterType.Minion || adjustedList.Contains(x));
+                            script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType != CharacterType.Townsfolk || adjustedList.Contains(x));
                             while (removed > 0)
                             {
                                 if (script.Count == 0)
@@ -432,14 +456,14 @@
                                 script.RemoveAt(index);
                                 removed--;
                             }
-                            List<Token> townsfolks = adjustedList.Where((x) => x.characterType == CharacterType.Townsfolk).ToList();
+                            List<Token> townsfolks = adjustedList;
+                            townsfolks.Remove(token);
                             List<Token> availableOutsiders = script.Where((x) => x.characterType == CharacterType.Outsider && !adjustedList.Contains(x)).ToList();
-                            for (int j = 0; j < availableOutsiders.Count && j < townsfolks.Count; j++)
+                            int max = (int)MathF.Min(availableOutsiders.Count, townsfolks.Count);
+                            int targetOutsiders = Random.Shared.Next(0, max);
+                            targetOutsiders -= Random.Shared.Next(0, (int)MathF.Floor(max / 2));
+                            for (int j = 0; j < targetOutsiders; j++)
                             {
-                                if (Random.Shared.NextSingle() >= (availableOutsiders.Count * 1.5f) / townsfolks.Count)
-                                {
-                                    continue;
-                                }
                                 int townsIndex = Random.Shared.Next(0, townsfolks.Count);
                                 int outsIndex = Random.Shared.Next(0, availableOutsiders.Count);
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
@@ -511,12 +535,11 @@
                             specialCounts[(int)CharacterType.Minion] += 1;
                             adjustedList[adjustedList.IndexOf(toReplace[replacingIndex])] = availableMinions[minionIndex];
                             townsfolks.Remove(toReplace[replacingIndex]);
-                            for (int j = 0; j < availableOutsiders.Count && j < townsfolks.Count; j++)
+                            int max = (int)MathF.Min(availableOutsiders.Count, townsfolks.Count);
+                            int targetOutsiders = Random.Shared.Next(0, max);
+                            targetOutsiders -= Random.Shared.Next(0, (int)MathF.Floor(max / 2));
+                            for (int j = 0; j < targetOutsiders; j++)
                             {
-                                if (Random.Shared.NextSingle() >= (availableOutsiders.Count * 1.5f) / townsfolks.Count)
-                                {
-                                    continue;
-                                }
                                 int townsIndex = Random.Shared.Next(0, townsfolks.Count);
                                 int outsIndex = Random.Shared.Next(0, availableOutsiders.Count);
                                 specialCounts[(int)CharacterType.Townsfolk] -= 1;
@@ -554,12 +577,11 @@
                             List<Token> script = scriptTokens;
                             List<Token> townsfolks = adjustedList.Where((x) => x.characterType == CharacterType.Townsfolk).ToList();
                             List<Token> availableOutsiders = script.Where((x) => !tokenForbidden.Contains(x.characterName) && x.characterType == CharacterType.Outsider && !adjustedList.Contains(x)).ToList();
-                            for (int j = 0; j < availableOutsiders.Count && j < townsfolks.Count; j++)
+                            int max = (int)MathF.Min(availableOutsiders.Count, townsfolks.Count);
+                            int targetOutsiders = Random.Shared.Next(0, max);
+                            targetOutsiders -= Random.Shared.Next(0, (int)MathF.Floor(max / 2));
+                            for (int j = 0; j < targetOutsiders; j++)
                             {
-                                if (Random.Shared.NextSingle() >= (availableOutsiders.Count * 1.5f) / townsfolks.Count)
-                                {
-                                    continue;
-                                }
                                 int townsIndex = Random.Shared.Next(0, townsfolks.Count);
                                 int outsIndex = Random.Shared.Next(0, availableOutsiders.Count);
                                 specialCounts[(int)CharacterType.Townsfolk] -= 1;

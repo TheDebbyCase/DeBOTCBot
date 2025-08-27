@@ -572,10 +572,13 @@ namespace DeBOTCBot
                         for (int j = 0; j < characterTypes.Length; j++)
                         {
                             CharacterType type = characterTypes[j];
-                            response += $"\r### {type}:\r";
                             List<Token> tokensOfType = [..BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
                             for (int k = 0; k < tokensOfType.Count; k++)
                             {
+                                if (k == 0)
+                                {
+                                    response += $"\r### {type}:\r";
+                                }
                                 response += $"- {tokensOfType[k].characterName}";
                                 if (k != tokensOfType.Count - 1)
                                 {

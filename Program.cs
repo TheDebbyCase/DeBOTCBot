@@ -7,6 +7,7 @@ using DSharpPlus.Interactivity.Extensions;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using System.ComponentModel;
+using DSharpPlus.Commands.ContextChecks;
 namespace DeBOTCBot
 {
     public class ServerSaveInfo
@@ -79,7 +80,7 @@ namespace DeBOTCBot
             await Destroy(true);
             DiscordPermissions storytellerPerms = new(DiscordPermission.ViewChannel, DiscordPermission.SendMessages, DiscordPermission.Connect, DiscordPermission.Speak, DiscordPermission.MuteMembers, DiscordPermission.DeafenMembers, DiscordPermission.MoveMembers, DiscordPermission.PrioritySpeaker);
             Log("Creating Storyteller role");
-            storytellerRole = await server.CreateRoleAsync("Storyteller", new DiscordPermissions(DiscordPermission.UseApplicationCommands), DiscordColor.Goldenrod, true, true);
+            storytellerRole = await server.CreateRoleAsync("Storyteller", color: DiscordColor.Goldenrod, hoist: true, mentionable: true);
             Log("Creating BOTC Player role");
             genericPlayerRole = await server.CreateRoleAsync("BOTC Player");
             Log("Creating Storyteller channels");
@@ -160,10 +161,7 @@ namespace DeBOTCBot
                 Log($"No homes category was found!");
             }
             botcGame.scripts = savedInfo.botcScripts;
-            if (botcGame.scripts == null)
-            {
-                botcGame.Initialize(this);
-            }
+            botcGame.Initialize(this);
             townChannels = savedInfo.botcChannels;
             if (townChannels == null || (townChannels != null && townChannels.Count == 0))
             {
@@ -253,82 +251,9 @@ namespace DeBOTCBot
     [Command("botc")]
     public class BOTCCommands
     {
-        [Command("save")]
-        [Description("Force server data to save")]
-        public static async Task ForceSaveCommand(SlashCommandContext context)
-        {
-            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-            info.Log("Attempting to save server info");
-            await context.DeferResponseAsync(true);
-            string response;
-            try
-            {
-                await DeBOTCBot.SaveServerInfo(info);
-                response = "Wrote info to file";
-            }
-            catch
-            {
-                response = "Something went wrong while saving server info!";
-            }
-            info.Log(response);
-            await context.EditResponseAsync(response);
-        }
-        [Command("reset")]
-        [Description("Force server data to reset")]
-        public static async Task ForceResetCommand(SlashCommandContext context, [Description("Are you sure?")] bool confirm = false)
-        {
-            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-            info.Log("Attempting to reset server info");
-            await context.DeferResponseAsync(true);
-            string response;
-            try
-            {
-                if (confirm)
-                {
-                    await DeBOTCBot.ResetServerInfo(info);
-                    response = "Reset server info";
-                }
-                else
-                {
-                    response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
-                }
-            }
-            catch
-            {
-                response = "Something went wrong while resetting server info!";
-            }
-            info.Log(response);
-            await context.EditResponseAsync(response);
-        }
-        [Command("destroy")]
-        [Description("Remove BOTC channels and roles")]
-        public static async Task BOTCDestroyCommand(SlashCommandContext context)
-        {
-            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-            info.Log("Attempting to destroy BOTC environment!");
-            await context.DeferResponseAsync(true);
-            string response;
-            try
-            {
-                if (info.hasInfo)
-                {
-                    await info.Destroy();
-                    response = "Successfully destroyed BOTC environment!";
-                }
-                else
-                {
-                    response = "No BOTC environment was found!";
-                }
-            }
-            catch
-            {
-                response = "Something went wrong while trying to destroy BOTC environment!";
-            }
-            info.Log(response);
-            await context.EditResponseAsync(response);
-        }
         [Command("create")]
         [Description("Create BOTC channels and roles")]
+        [RequirePermissions(DiscordPermission.ManageChannels)]
         public static async Task BOTCCreateCommand(SlashCommandContext context)
         {
             ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -354,45 +279,496 @@ namespace DeBOTCBot
             info.Log(response);
             await context.EditResponseAsync(response);
         }
-        [Command("tokens")]
-        [Description("Display all possible BOTC tokens")]
-        public static async Task ShowTokensCommand(SlashCommandContext context)
+        [Command("storyteller")]
+        [Description("Choose a server member to become the storyteller")]
+        [RequirePermissions(DiscordPermission.ManageChannels)]
+        public static async ValueTask BOTCStorytellerCommand(SlashCommandContext context, [Description("User to turn into the storyteller")] DiscordMember member)
         {
             ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-            info.Log("Attempting to show BOTC tokens!");
+            info.Log("Attempting to choose a new storyteller!");
             await context.DeferResponseAsync(true);
             string response;
             try
             {
-                response = "# Tokens:";
-                CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
-                for (int i = 0; i < characterTypes.Length; i++)
+                if (!info.hasInfo)
                 {
-                    CharacterType type = characterTypes[i];
-                    response += $"\r\n## {type}:\r\n";
-                    List<Token> tokensOfType = [..BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type)];
-                    for (int j = 0; j < tokensOfType.Count; j++)
+                    response = "BOTC environment does not exist!";
+                }
+                else if (info.currentStoryteller != member)
+                {
+                    response = string.Empty;
+                    if (info.currentStoryteller != null)
                     {
-                        response += tokensOfType[j].characterName;
-                        if (j != tokensOfType.Count - 1)
-                        {
-                            response += ", ";
-                        }
+                        response += $"Member {info.currentStoryteller.DisplayName} is no longer the storyteller,\r";
+                        info.Log("Deleting Storyteller Controls");
+                        await info.storytellerControls.DeleteAsync();
+                        info.storytellerControls = null;
                     }
+                    response += $"Member {member.DisplayName} is the new storyteller";
+                    await member.GrantRoleAsync(info.storytellerRole);
+                    info.currentStoryteller = member;
+                }
+                else
+                {
+                    response = $"Member {member.DisplayName} was already the storyteller!";
                 }
             }
             catch
             {
-                response = "Something went wrong while showing BOTC tokens!";
+                response = "Something went wrong while choosing a storyteller!";
                 info.Log(response);
             }
             await context.EditResponseAsync(response);
+        }
+        [Command("destroy")]
+        [Description("Remove BOTC channels and roles")]
+        [RequirePermissions(DiscordPermission.ManageChannels)]
+        public static async Task BOTCDestroyCommand(SlashCommandContext context)
+        {
+            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+            info.Log("Attempting to destroy BOTC environment!");
+            await context.DeferResponseAsync(true);
+            string response;
+            try
+            {
+                if (info.hasInfo)
+                {
+                    await info.Destroy();
+                    response = "Successfully destroyed BOTC environment!";
+                }
+                else
+                {
+                    response = "No BOTC environment was found!";
+                }
+            }
+            catch
+            {
+                response = "Something went wrong while trying to destroy BOTC environment!";
+            }
+            info.Log(response);
+            await context.EditResponseAsync(response);
+        }
+        [Command("save")]
+        [Description("Force server data to save")]
+        [RequirePermissions(DiscordPermission.Administrator)]
+        public static async Task ForceSaveCommand(SlashCommandContext context)
+        {
+            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+            info.Log("Attempting to save server info");
+            await context.DeferResponseAsync(true);
+            string response;
+            try
+            {
+                await DeBOTCBot.SaveServerInfo(info);
+                response = "Wrote info to file";
+            }
+            catch
+            {
+                response = "Something went wrong while saving server info!";
+            }
+            info.Log(response);
+            await context.EditResponseAsync(response);
+        }
+        [Command("reset")]
+        [Description("Force server data to reset")]
+        [RequirePermissions(DiscordPermission.Administrator)]
+        public static async Task ForceResetCommand(SlashCommandContext context, [Description("Are you sure?")] bool confirm = false)
+        {
+            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+            info.Log("Attempting to reset server info");
+            await context.DeferResponseAsync(true);
+            string response;
+            try
+            {
+                if (confirm)
+                {
+                    await DeBOTCBot.ResetServerInfo(info);
+                    response = "Reset server info";
+                }
+                else
+                {
+                    response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
+                }
+            }
+            catch
+            {
+                response = "Something went wrong while resetting server info!";
+            }
+            info.Log(response);
+            await context.EditResponseAsync(response);
+        }
+        [Command("pandemonium")]
+        [Description("See info about the game and its creators")]
+        public static async Task BOTCPandemoniumCommand(SlashCommandContext context)
+        {
+            ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+            info.Log("Attempting to show Pandemonium Institute info!");
+            await context.DeferResponseAsync(true);
+            string response;
+            try
+            {
+                response = "This bot is not associated with official Blood on The Clocktower or Pandemonium Institute, please see the official website and patreon for official tools, information and to show support for the game\r[Blood on The Clocktower Website](https://bloodontheclocktower.com)\r[Blood on The Clocktower Patreon](https://www.patreon.com/botconline)";
+            }
+            catch
+            {
+                response = "Something went wrong while showing Pandemonium Institute information!";
+                info.Log(response);
+            }
+            await context.EditResponseAsync(response);
+        }
+        [Command("tokens")]
+        public class TokenCommands
+        {
+            [Command("show")]
+            [Description("Display all possible BOTC tokens")]
+            public static async Task ShowTokensCommand(SlashCommandContext context)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log("Attempting to show BOTC tokens!");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    response = "# Tokens:";
+                    CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
+                    for (int i = 0; i < characterTypes.Length; i++)
+                    {
+                        CharacterType type = characterTypes[i];
+                        response += $"\r## {type}:\r";
+                        List<Token> tokensOfType = [.. BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type)];
+                        for (int j = 0; j < tokensOfType.Count; j++)
+                        {
+                            response += tokensOfType[j].characterName;
+                            if (j != tokensOfType.Count - 1)
+                            {
+                                response += ", ";
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    response = "Something went wrong while showing BOTC tokens!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+            [Command("description")]
+            [Description("Display the description of a specific BOTC token")]
+            public static async Task TokenDescriptionCommand(SlashCommandContext context, [Description("Token to show description of")] string token)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Attempting to show the description of \"{token}\"!");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    if (BOTCCharacters.TokenExists(token, out string exactToken))
+                    {
+                        response = $"## {exactToken}:\r{BOTCCharacters.allTokens[exactToken].description}";
+                    }
+                    else
+                    {
+                        response = $"Token by name \"{token}\" could not be found!!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while showing the description of \"{token}\"!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+        }
+        [Command("scripts")]
+        public class ScriptCommands
+        {
+            [Command("show")]
+            [Description("Display available BOTC scripts")]
+            public static async Task BOTCScriptShowCommand(SlashCommandContext context)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log("Showing all scripts");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    if (info.botcGame.scripts != null && info.botcGame.scripts.Count > 0)
+                    {
+                        response = "# Scripts:";
+                        string[] scriptNames = [.. info.botcGame.scripts.Keys];
+                        for (int i = 0; i < scriptNames.Length; i++)
+                        {
+                            response += $"\r\r## {scriptNames[i]}:\r";
+                            string[] scriptTokens = info.botcGame.scripts[scriptNames[i]];
+                            CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
+                            for (int j = 0; j < characterTypes.Length; j++)
+                            {
+                                CharacterType type = characterTypes[j];
+                                response += $"\r### {type}:\r";
+                                List<Token> tokensOfType = [.. BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
+                                for (int k = 0; k < tokensOfType.Count; k++)
+                                {
+                                    response += $"- {tokensOfType[k].characterName}";
+                                    if (k != tokensOfType.Count - 1)
+                                    {
+                                        response += "\r";
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        response = $"Could not find any scripts!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while displaying available scripts!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+            [Command("new")]
+            [Description("Add a new BOTC script")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
+            public static async Task BOTCScriptAddCommand(SlashCommandContext context, [Description("The name of the new script")] string script, [Description("Tokens to add to the script (Separated by \",\")")] string tokens)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Adding new script with name: \"{script}\"");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    if (!info.botcGame.ScriptExists(script, out string correctedScript))
+                    {
+                        response = $"# {script}:\r## - Tokens\r";
+                        string[] tokensArray = tokens.Split(", ");
+                        List<string> tokensToAdd = [];
+                        for (int i = 0; i < tokensArray.Length; i++)
+                        {
+                            if (BOTCCharacters.TokenExists(tokensArray[i], out string newToken) && !tokensToAdd.Contains(newToken))
+                            {
+                                response += $"  - {newToken}\r";
+                                tokensToAdd.Add(newToken);
+                            }
+                        }
+                        info.botcGame.scripts.Add(script, [.. tokensToAdd]);
+                        if (info.storytellerControls != null && info.gameStarted)
+                        {
+                            DeBOTCBot.UpdateControls(info);
+                            await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
+                        }
+                        await DeBOTCBot.SaveServerInfo(info);
+                    }
+                    else
+                    {
+                        response = $"Script: \"{correctedScript}\" already exists!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while adding script: \"{script}\"!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+            [Command("edit")]
+            [Description("Edit the specified BOTC script")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
+            public static async Task BOTCScriptEditCommand(SlashCommandContext context, [Description("The existing script to edit")] string script, [Description("Tokens to add to the script (Separated by \",\")")] string add = default, [Description("Tokens to remove from the script (Separated by \",\")")] string remove = default)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Editing script with name: \"{script}\"");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    if (info.botcGame.ScriptExists(script, out string correctedScript))
+                    {
+                        response = $"# {correctedScript}\r";
+                        string[] toAddArray = add.Split(",");
+                        List<string> tokensToAdd = [];
+                        if (toAddArray.Length > 0)
+                        {
+                            response += "\r## - Adding:\r";
+                            for (int i = 0; i < toAddArray.Length; i++)
+                            {
+                                if (BOTCCharacters.TokenExists(toAddArray[i], out string newToken) && !tokensToAdd.Contains(newToken) && !info.botcGame.scripts[correctedScript].Contains(newToken))
+                                {
+                                    response += $"  - {newToken}\r";
+                                    tokensToAdd.Add(newToken);
+                                }
+                            }
+                        }
+                        string[] toRemoveArray = remove.Split(",");
+                        List<string> tokensToRemove = [];
+                        if (toRemoveArray.Length > 0)
+                        {
+                            response += "\r## - Removing:\r";
+                            for (int i = 0; i < toRemoveArray.Length; i++)
+                            {
+                                if (BOTCCharacters.TokenExists(toRemoveArray[i], out string newToken) && !tokensToRemove.Contains(newToken) && info.botcGame.scripts[correctedScript].Contains(newToken))
+                                {
+                                    response += $"  - {newToken}\r";
+                                    tokensToRemove.Add(newToken);
+                                }
+                            }
+                        }
+                        List<string> finalTokens = [.. info.botcGame.scripts[correctedScript]];
+                        finalTokens.AddRange(tokensToAdd);
+                        finalTokens.RemoveAll(tokensToRemove.Contains);
+                        info.botcGame.scripts[correctedScript] = [.. finalTokens];
+                        await DeBOTCBot.SaveServerInfo(info);
+                    }
+                    else
+                    {
+                        response = $"Script: \"{script}\" could not be found!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while editing script: \"{script}\"!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+            [Command("remove")]
+            [Description("Remove a specified BOTC script")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
+            public static async Task BOTCScriptRemoveCommand(SlashCommandContext context, [Description("The existing script to remove")] string script)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Removing script with name: \"{script}\"");
+                string response;
+                await context.DeferResponseAsync(true);
+                try
+                {
+                    if (info.botcGame.ScriptExists(script, out string correctedScript))
+                    {
+                        info.botcGame.scripts.Remove(correctedScript);
+                        response = $"Removed script: \"{correctedScript}\"";
+                        if (info.storytellerControls != null && info.gameStarted)
+                        {
+                            DeBOTCBot.UpdateControls(info);
+                            await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
+                        }
+                        await DeBOTCBot.SaveServerInfo(info);
+                    }
+                    else
+                    {
+                        response = $"Script: \"{script}\" could not be found!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while removing script: \"{script}\"!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+            [Command("night")]
+            [Description("Show the night order for a specific script")]
+            public static async Task BOTCScriptOrderCommand(SlashCommandContext context, [Description("The script to see the night order of")] string script)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Displaying night order of script with name: \"{script}\"");
+                string response;
+                await context.DeferResponseAsync(true);
+                try
+                {
+                    if (info.botcGame.ScriptExists(script, out string correctedScript))
+                    {
+                        response = $"# {correctedScript}\r{DeBOTCBot.GenerateNightOrderMessage(info.botcGame.scripts[correctedScript])}";
+                    }
+                    else
+                    {
+                        response = $"Script: \"{script}\" could not be found!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while displaying the night order of script: \"{script}\"!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
+            [Command("roll")]
+            [Description("Roll a grimoire")]
+            public static async Task BOTCScriptRollCommand(SlashCommandContext context, [Description("The script to use for this roll")] string script, [Description("The number of players to roll for (5 - 15 inclusive)")] int players)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Rolling a grimoire using script with name: \"{script}\", and player count of {players}");
+                await context.DeferResponseAsync(true);
+                string response;
+                string responseNext = string.Empty;
+                try
+                {
+                    if (info.botcGame.ScriptExists(script, out string correctedScript))
+                    {
+                        string[] scriptTokens = info.botcGame.scripts[correctedScript];
+                        response = DeBOTCBot.GenerateTokenMessage(info, scriptTokens, players);
+                        responseNext = $"{DeBOTCBot.GenerateNightOrderMessage(scriptTokens)}";
+                    }
+                    else
+                    {
+                        response = $"Script with name: \"{script}\" does not exist!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while rolling a grimoire using script: \"{script}\" with player count: \"{players}\"! Are there enough of each token type for this number of players?";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+                if (responseNext != string.Empty)
+                {
+                    await context.FollowupAsync(responseNext, true);
+                }
+            }
+            [Command("default")]
+            [Description("Reset scripts to default")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
+            public static async Task BOTCScriptDefaultCommand(SlashCommandContext context, [Description("Are you sure?")] bool confirm = false)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Setting scripts to default");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    if (confirm)
+                    {
+                        info.botcGame.Initialize();
+                        response = "Set scripts to default";
+                    }
+                    else
+                    {
+                        response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while setting scripts to default!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
+            }
         }
         [Command("town")]
         public class ChannelCommands
         {
             [Command("add")]
             [Description("Add a town channel")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCChannelAddCommand(SlashCommandContext context, [Description("Name of channel to add")] string channel, [Description("User limit for new channel")] int voiceLimit)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -435,6 +811,7 @@ namespace DeBOTCBot
             }
             [Command("remove")]
             [Description("Remove a town channel")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCChannelRemoveCommand(SlashCommandContext context, [Description("Name of channel to remove")] string channel)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -471,6 +848,7 @@ namespace DeBOTCBot
             }
             [Command("edit")]
             [Description("Edit an existing town channel")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCChannelEditCommand(SlashCommandContext context, [Description("Name of channel to edit")] string channel, [Description("New name for this channel")] string newName = "", [Description("New user limit for this new channel")] int voiceLimit = -1)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -525,11 +903,11 @@ namespace DeBOTCBot
                 string response;
                 try
                 {
-                    response = "# Channels:\r\n";
+                    response = "# Channels:\r";
                     List<string> channelNames = [..info.townChannels.Keys];
                     for (int i = 0; i < channelNames.Count; i++)
                     {
-                        response += $"- **{channelNames[i]}**, {info.townChannels[channelNames[i]]}\r\n";
+                        response += $"- **{channelNames[i]}**, {info.townChannels[channelNames[i]]}\r";
                     }
                 }
                 catch
@@ -541,6 +919,7 @@ namespace DeBOTCBot
             }
             [Command("default")]
             [Description("Reset town to default")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCChannelDefaultCommand(SlashCommandContext context, [Description("Are you sure?")] bool confirm = false)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -601,11 +980,11 @@ namespace DeBOTCBot
                 string response;
                 try
                 {
-                    response = "# Homes:\r\n";
+                    response = "# Homes:\r";
                     List<string> homeNames = info.homeChannels;
                     for (int i = 0; i < homeNames.Count; i++)
                     {
-                        response += $"- {homeNames[i]}\r\n";
+                        response += $"- {homeNames[i]}\r";
                     }
                 }
                 catch
@@ -617,6 +996,7 @@ namespace DeBOTCBot
             }
             [Command("add")]
             [Description("Add a new possible home name")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCHomesAddCommand(SlashCommandContext context, [Description("Name of new home")] string name)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -645,6 +1025,7 @@ namespace DeBOTCBot
             }
             [Command("remove")]
             [Description("Remove a possible home name")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCHomesRemoveCommand(SlashCommandContext context, [Description("Name of home to remove")] string name)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -672,6 +1053,7 @@ namespace DeBOTCBot
             }
             [Command("set")]
             [Description("Set possible home names")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCHomesSetCommand(SlashCommandContext context, [Description("List of homes to set (Separated by \", \")")] string names)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -680,11 +1062,11 @@ namespace DeBOTCBot
                 string response;
                 try
                 {
-                    response = "# Homes:\r\n";
+                    response = "# Homes:\r";
                     List<string> homeNamesList = [..names.Replace(" ", "").Split(',')];
                     for (int i = 0; i < homeNamesList.Count; i++)
                     {
-                        response += $"- {homeNamesList[i]}\r\n";
+                        response += $"- {homeNamesList[i]}\r";
                     }
                     info.homeChannels = homeNamesList;
                 }
@@ -697,6 +1079,7 @@ namespace DeBOTCBot
             }
             [Command("default")]
             [Description("Reset home names to default")]
+            [RequirePermissions(DiscordPermission.ManageChannels)]
             public static async Task BOTCHomesDefaultCommand(SlashCommandContext context, [Description("Are you sure?")] bool confirm = false)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
@@ -723,250 +1106,6 @@ namespace DeBOTCBot
                 await context.EditResponseAsync(response);
             }
         }
-        [Command("scripts")]
-        public class ScriptCommands
-        {
-            [Command("show")]
-            [Description("Display available BOTC scripts")]
-            public static async Task BOTCScriptShowCommand(SlashCommandContext context)
-            {
-                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-                info.Log("Showing all scripts");
-                await context.DeferResponseAsync(true);
-                string response;
-                try
-                {
-                    if (info.botcGame.scripts != null && info.botcGame.scripts.Count > 0)
-                    {
-                        response = "# Scripts:";
-                        string[] scriptNames = [.. info.botcGame.scripts.Keys];
-                        for (int i = 0; i < scriptNames.Length; i++)
-                        {
-                            response += $"\r\n\r\n## {scriptNames[i]}:\r\n";
-                            string[] scriptTokens = info.botcGame.scripts[scriptNames[i]];
-                            CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
-                            for (int j = 0; j < characterTypes.Length; j++)
-                            {
-                                CharacterType type = characterTypes[j];
-                                response += $"\r\n### {type}:\r\n";
-                                List<Token> tokensOfType = [..BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
-                                for (int k = 0; k < tokensOfType.Count; k++)
-                                {
-                                    response += $"- {tokensOfType[k].characterName}";
-                                    if (k != tokensOfType.Count - 1)
-                                    {
-                                        response += "\r\n";
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        response = $"Could not find any scripts!";
-                        info.Log(response);
-                    }
-                }
-                catch
-                {
-                    response = $"Something went wrong while displaying available scripts!";
-                    info.Log(response);
-                }
-                await context.EditResponseAsync(response);
-            }
-            [Command("new")]
-            [Description("Add a new BOTC script")]
-            public static async Task BOTCScriptAddCommand(SlashCommandContext context, [Description("The name of the new script")] string script, [Description("Tokens to add to the script (Separated by \",\")")]  string tokens)
-            {
-                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-                info.Log($"Adding new script with name: \"{script}\"");
-                await context.DeferResponseAsync(true);
-                string response;
-                try
-                {
-                    if (!info.botcGame.ScriptExists(script, out string correctedScript))
-                    {
-                        response = $"# {script}:\r\n## - Tokens\r\n";
-                        string[] tokensArray = tokens.Split(", ");
-                        List<string> tokensToAdd = [];
-                        for (int i = 0; i < tokensArray.Length; i++)
-                        {
-                            if (BOTCCharacters.TokenExists(tokensArray[i], out string newToken) && !tokensToAdd.Contains(newToken))
-                            {
-                                response += $"  - {newToken}\r\n";
-                                tokensToAdd.Add(newToken);
-                            }
-                        }
-                        info.botcGame.scripts.Add(script, [.. tokensToAdd]);
-                        if (info.storytellerControls != null && info.gameStarted)
-                        {
-                            DeBOTCBot.UpdateControls(info);
-                            await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
-                        }
-                        await DeBOTCBot.SaveServerInfo(info);
-                    }
-                    else
-                    {
-                        response = $"Script: \"{correctedScript}\" already exists!";
-                        info.Log(response);
-                    }
-                }
-                catch
-                {
-                    response = $"Something went wrong while adding script: \"{script}\"!";
-                    info.Log(response);
-                }
-                await context.EditResponseAsync(response);
-            }
-            [Command("edit")]
-            [Description("Edit the specified BOTC script")]
-            public static async Task BOTCScriptEditCommand(SlashCommandContext context, [Description("The existing script to edit")] string script, [Description("Tokens to add to the script (Separated by \",\")")] string add = default, [Description("Tokens to remove from the script (Separated by \",\")")] string remove = default)
-            {
-                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-                info.Log($"Editing script with name: \"{script}\"");
-                await context.DeferResponseAsync(true);
-                string response;
-                try
-                {
-                    if (info.botcGame.ScriptExists(script, out string correctedScript))
-                    {
-                        response = $"# {correctedScript}\r\n";
-                        string[] toAddArray = add.Split(",");
-                        List<string> tokensToAdd = [];
-                        if (toAddArray.Length > 0)
-                        {
-                            response += "\r\n## - Adding:\r\n";
-                            for (int i = 0; i < toAddArray.Length; i++)
-                            {
-                                if (BOTCCharacters.TokenExists(toAddArray[i], out string newToken) && !tokensToAdd.Contains(newToken) && !info.botcGame.scripts[correctedScript].Contains(newToken))
-                                {
-                                    response += $"  - {newToken}\r\n";
-                                    tokensToAdd.Add(newToken);
-                                }
-                            }
-                        }
-                        string[] toRemoveArray = remove.Split(",");
-                        List<string> tokensToRemove = [];
-                        if (toRemoveArray.Length > 0)
-                        {
-                            response += "\r\n## - Removing:\r\n";
-                            for (int i = 0; i < toRemoveArray.Length; i++)
-                            {
-                                if (BOTCCharacters.TokenExists(toRemoveArray[i], out string newToken) && !tokensToRemove.Contains(newToken) && info.botcGame.scripts[correctedScript].Contains(newToken))
-                                {
-                                    response += $"  - {newToken}\r\n";
-                                    tokensToRemove.Add(newToken);
-                                }
-                            }
-                        }
-                        List<string> finalTokens = [..info.botcGame.scripts[correctedScript]];
-                        finalTokens.AddRange(tokensToAdd);
-                        finalTokens.RemoveAll(tokensToRemove.Contains);
-                        info.botcGame.scripts[correctedScript] = [..finalTokens];
-                        await DeBOTCBot.SaveServerInfo(info);
-                    }
-                    else
-                    {
-                        response = $"Script: \"{script}\" could not be found!";
-                        info.Log(response);
-                    }
-                }
-                catch
-                {
-                    response = $"Something went wrong while editing script: \"{script}\"!";
-                    info.Log(response);
-                }
-                await context.EditResponseAsync(response);
-            }
-            [Command("remove")]
-            [Description("Remove a specified BOTC script")]
-            public static async Task BOTCScriptRemoveCommand(SlashCommandContext context, [Description("The existing script to remove")] string script)
-            {
-                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-                info.Log($"Removing script with name: \"{script}\"");
-                string response;
-                await context.DeferResponseAsync(true);
-                try
-                {
-                    if (info.botcGame.ScriptExists(script, out string correctedScript))
-                    {
-                        info.botcGame.scripts.Remove(correctedScript);
-                        response = $"Removed script: \"{correctedScript}\"";
-                        if (info.storytellerControls != null && info.gameStarted)
-                        {
-                            DeBOTCBot.UpdateControls(info);
-                            await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
-                        }
-                        await DeBOTCBot.SaveServerInfo(info);
-                    }
-                    else
-                    {
-                        response = $"Script: \"{script}\" could not be found!";
-                        info.Log(response);
-                    }
-                }
-                catch
-                {
-                    response = $"Something went wrong while removing script: \"{script}\"!";
-                    info.Log(response);
-                }
-                await context.EditResponseAsync(response);
-            }
-            [Command("roll")]
-            [Description("Roll a grimoire")]
-            public static async Task BOTCScriptRollCommand(SlashCommandContext context, [Description("The script to use for this roll")] string script, [Description("The number of players to roll for (5 - 15 inclusive)")] int players)
-            {
-                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-                info.Log($"Rolling a grimoire using script with name: \"{script}\", and player count of {players}");
-                await context.DeferResponseAsync(true);
-                string response;
-                try
-                {
-                    if (info.botcGame.ScriptExists(script, out string correctedScript))
-                    {
-                        response = DeBOTCBot.GenerateTokenMessage(info, [..info.botcGame.scripts[correctedScript]], players);
-                    }
-                    else
-                    {
-                        response = $"Script with name: \"{script}\" does not exist!";
-                        info.Log(response);
-                    }
-                }
-                catch
-                {
-                    response = $"Something went wrong while rolling a grimoire using script: \"{script}\" with player count: \"{players}\"! Are there enough of each token type for this number of players?";
-                    info.Log(response);
-                }
-                await context.EditResponseAsync(response);
-            }
-            [Command("default")]
-            [Description("Reset scripts to default")]
-            public static async Task BOTCScriptDefaultCommand(SlashCommandContext context, [Description("Are you sure?")] bool confirm = false)
-            {
-                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
-                info.Log($"Setting scripts to default");
-                await context.DeferResponseAsync(true);
-                string response;
-                try
-                {
-                    if (confirm)
-                    {
-                        info.botcGame.Initialize();
-                        response = "Set scripts to default";
-                    }
-                    else
-                    {
-                        response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
-                    }
-                }
-                catch
-                {
-                    response = $"Something went wrong while setting scripts to default!";
-                    info.Log(response);
-                }
-                await context.EditResponseAsync(response);
-            }
-        }
     }
     public class DeBOTCBot
     {
@@ -984,7 +1123,7 @@ namespace DeBOTCBot
             }
             Serialization.ResetDebugLog();
             DiscordClientBuilder builder = DiscordClientBuilder.CreateDefault(token, Intents);
-            builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated).HandleGuildDownloadCompleted(BotReady).HandleComponentInteractionCreated(ButtonPressed)).UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) }).UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands), 1396921797160472576);});
+            builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated).HandleGuildDownloadCompleted(BotReady).HandleComponentInteractionCreated(ButtonPressed)).UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) }).UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands)); });
             DiscordClient client = builder.Build();
             await client.ConnectAsync(new DiscordActivity("Blood on The Clocktower", DiscordActivityType.Playing), DiscordUserStatus.Online);
             await Task.Delay(-1);
@@ -1153,9 +1292,12 @@ namespace DeBOTCBot
                             await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                             string script = args.Values.Single();
                             string tokensString;
+                            string orderString = string.Empty;
                             try
                             {
-                                tokensString = GenerateTokenMessage(info, [..info.botcGame.scripts[script]], currentPlayers.Count);
+                                string[] scriptTokens = info.botcGame.scripts[script];
+                                tokensString = GenerateTokenMessage(info, scriptTokens, currentPlayers.Count);
+                                orderString = $"\r{GenerateNightOrderMessage(scriptTokens)}";
                             }
                             catch
                             {
@@ -1163,6 +1305,10 @@ namespace DeBOTCBot
                                 info.Log(tokensString);
                             }
                             await client.SendMessageAsync(info.storytellerChannel, tokensString);
+                            if (orderString != string.Empty)
+                            {
+                                await client.SendMessageAsync(info.storytellerChannel, orderString);
+                            }
                             break;
                         }
                     default:
@@ -1172,6 +1318,11 @@ namespace DeBOTCBot
                             break;
                         }
                 }
+            }
+            else
+            {
+                info.Log($"Button Pressed by non-storyteller!: \"{args.Id}\"");
+                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
             }
         }
         public static async Task StartGame(ServerInfo info, DiscordClient client, List<ulong> ids)
@@ -1252,10 +1403,10 @@ namespace DeBOTCBot
             stringTwo = stringTwo.Replace("'", "").Replace("&", "and").Replace(" ", "");
             return stringOne.Equals(stringTwo, StringComparison.OrdinalIgnoreCase);
         }
-        public static string GenerateTokenMessage(ServerInfo info, List<string> finalScript, int players)
+        public static string GenerateTokenMessage(ServerInfo info, string[] finalScript, int players)
         {
             bool playerCountChange = false;
-            string finalString = "# Tokens\r\n\r\n";
+            string finalString = "# Tokens\r\r";
             if (players < 5 || players > 15)
             {
                 players = Math.Clamp(players, 5, 15);
@@ -1264,11 +1415,38 @@ namespace DeBOTCBot
             string[] tokens = info.botcGame.RollTokens([..finalScript.Distinct()], players);
             for (int i = 0; i < tokens.Length; i++)
             {
-                finalString += $"- **{BOTCCharacters.allTokens[tokens[i]].characterType}**: {tokens[i]}\r\n";
+                finalString += $"- **{BOTCCharacters.allTokens[tokens[i]].characterType}**: {tokens[i]}\r";
             }
             if (playerCountChange)
             {
                 finalString += "-# Player count was invalid and was clamped between 5 and 15!";
+            }
+            return finalString;
+        }
+        public static string GenerateNightOrderMessage(string[] scriptNames)
+        {
+            string finalString = "## Night 0 Order:\r";
+            List<Token> scriptTokens = [.. BOTCCharacters.allTokens.Values.Where((x) => scriptNames.Contains(x.characterName) && x.nightOrder != (-1, -1))];
+            scriptTokens.Sort((x, y) => x.nightOrder.Item1.CompareTo(y.nightOrder.Item1));
+            for (int i = 0; i < scriptTokens.Count; i++)
+            {
+                Token token = scriptTokens[i];
+                if (token.nightOrder.Item1 == -1)
+                {
+                    continue;
+                }
+                finalString += $"### {token.characterName}\r{token.orderFirstDescription}\r";
+            }
+            finalString += "\r## Other Nights Order:\r";
+            scriptTokens.Sort((x, y) => x.nightOrder.Item2.CompareTo(y.nightOrder.Item2));
+            for (int i = 0; i < scriptTokens.Count; i++)
+            {
+                Token token = scriptTokens[i];
+                if (token.nightOrder.Item2 == -1)
+                {
+                    continue;
+                }
+                finalString += $"### {token.characterName}\r{token.orderOtherDescription}\r";
             }
             return finalString;
         }

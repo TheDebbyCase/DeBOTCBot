@@ -427,10 +427,13 @@ namespace DeBOTCBot
                 info.Log("Attempting to show BOTC tokens!");
                 await context.DeferResponseAsync(true);
                 string response;
+                bool splitMessage = false;
+                int halfMessage = -1;
                 try
                 {
                     response = "# Tokens:";
                     CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
+                    int loopHalf = (int)MathF.Floor(characterTypes.Length / 2f) - 1;
                     for (int i = 0; i < characterTypes.Length; i++)
                     {
                         CharacterType type = characterTypes[i];
@@ -443,15 +446,29 @@ namespace DeBOTCBot
                             {
                                 response += ", ";
                             }
+                            else if (i == loopHalf)
+                            {
+                                halfMessage = response.Length;
+                            }
                         }
                     }
+                    splitMessage = response.Length > 2000;
                 }
                 catch
                 {
                     response = "Something went wrong while showing BOTC tokens!";
                     info.Log(response);
                 }
-                await context.EditResponseAsync(response);
+                if (splitMessage && halfMessage > -1)
+                {
+                    await context.EditResponseAsync(response[..halfMessage]);
+                    await context.FollowupAsync(response[halfMessage..], true);
+                }
+                else
+                {
+                    await context.EditResponseAsync(response);
+                }
+                
             }
             [Command("description")]
             [Description("Display the description of a specific BOTC token")]
@@ -484,9 +501,9 @@ namespace DeBOTCBot
         [Command("scripts")]
         public class ScriptCommands
         {
-            [Command("show")]
-            [Description("Display available BOTC scripts")]
-            public static async Task BOTCScriptShowCommand(SlashCommandContext context)
+            [Command("all")]
+            [Description("Display all available BOTC scripts")]
+            public static async Task BOTCScriptAllCommand(SlashCommandContext context)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
                 info.Log("Showing all scripts");
@@ -496,26 +513,14 @@ namespace DeBOTCBot
                 {
                     if (info.botcGame.scripts != null && info.botcGame.scripts.Count > 0)
                     {
-                        response = "# Scripts:";
+                        response = "# Scripts:\r## ";
                         string[] scriptNames = [.. info.botcGame.scripts.Keys];
                         for (int i = 0; i < scriptNames.Length; i++)
                         {
-                            response += $"\r\r## {scriptNames[i]}:\r";
-                            string[] scriptTokens = info.botcGame.scripts[scriptNames[i]];
-                            CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
-                            for (int j = 0; j < characterTypes.Length; j++)
+                            response += $"{scriptNames[i]}";
+                            if (i != scriptNames.Length - 1)
                             {
-                                CharacterType type = characterTypes[j];
-                                response += $"\r### {type}:\r";
-                                List<Token> tokensOfType = [.. BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
-                                for (int k = 0; k < tokensOfType.Count; k++)
-                                {
-                                    response += $"- {tokensOfType[k].characterName}";
-                                    if (k != tokensOfType.Count - 1)
-                                    {
-                                        response += "\r";
-                                    }
-                                }
+                                response += ", ";
                             }
                         }
                     }
@@ -531,6 +536,66 @@ namespace DeBOTCBot
                     info.Log(response);
                 }
                 await context.EditResponseAsync(response);
+                //string[] scriptTokens = info.botcGame.scripts[scriptNames[i]];
+                //CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
+                //for (int j = 0; j < characterTypes.Length; j++)
+                //{
+                //    CharacterType type = characterTypes[j];
+                //    response += $"\r### {type}:\r";
+                //    List<Token> tokensOfType = [.. BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
+                //    for (int k = 0; k < tokensOfType.Count; k++)
+                //    {
+                //        response += $"- {tokensOfType[k].characterName}";
+                //        if (k != tokensOfType.Count - 1)
+                //        {
+                //            response += "\r";
+                //        }
+                //    }
+                //}
+            }
+            [Command("show")]
+            [Description("Display the tokens available in a script")]
+            public static async Task BOTCScriptShowCommand(SlashCommandContext context, [Description("The script to see the tokens of")] string script)
+            {
+                ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
+                info.Log($"Showing all tokens in script of name: \"{script}\"");
+                await context.DeferResponseAsync(true);
+                string response;
+                try
+                {
+                    if (info.botcGame.ScriptExists(script, out string correctedScript))
+                    {
+                        
+                        string[] scriptTokens = info.botcGame.scripts[correctedScript];
+                        response = $"## {correctedScript}:";
+                        CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
+                        for (int j = 0; j < characterTypes.Length; j++)
+                        {
+                            CharacterType type = characterTypes[j];
+                            response += $"\r### {type}:\r";
+                            List<Token> tokensOfType = [..BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
+                            for (int k = 0; k < tokensOfType.Count; k++)
+                            {
+                                response += $"- {tokensOfType[k].characterName}";
+                                if (k != tokensOfType.Count - 1)
+                                {
+                                    response += ", ";
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        response = $"Script of name: {script} could not be found!";
+                        info.Log(response);
+                    }
+                }
+                catch
+                {
+                    response = $"Something went wrong while displaying the tokens of script of name {script}!";
+                    info.Log(response);
+                }
+                await context.EditResponseAsync(response);
             }
             [Command("new")]
             [Description("Add a new BOTC script")]
@@ -541,12 +606,15 @@ namespace DeBOTCBot
                 info.Log($"Adding new script with name: \"{script}\"");
                 await context.DeferResponseAsync(true);
                 string response;
+                bool split = false;
+                int halfway = -1;
                 try
                 {
                     if (!info.botcGame.ScriptExists(script, out string correctedScript))
                     {
                         response = $"# {script}:\r## - Tokens\r";
                         string[] tokensArray = tokens.Split(", ");
+                        int loopHalf = (int)MathF.Floor(tokensArray.Length / 2f) - 1;
                         List<string> tokensToAdd = [];
                         for (int i = 0; i < tokensArray.Length; i++)
                         {
@@ -554,6 +622,10 @@ namespace DeBOTCBot
                             {
                                 response += $"  - {newToken}\r";
                                 tokensToAdd.Add(newToken);
+                            }
+                            if (i == loopHalf)
+                            {
+                                halfway = response.Length;
                             }
                         }
                         info.botcGame.scripts.Add(script, [.. tokensToAdd]);
@@ -563,6 +635,7 @@ namespace DeBOTCBot
                             await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
                         }
                         await DeBOTCBot.SaveServerInfo(info);
+                        split = response.Length > 2000;
                     }
                     else
                     {
@@ -575,7 +648,15 @@ namespace DeBOTCBot
                     response = $"Something went wrong while adding script: \"{script}\"!";
                     info.Log(response);
                 }
-                await context.EditResponseAsync(response);
+                if (split && halfway > -1)
+                {
+                    await context.EditResponseAsync(response[..halfway]);
+                    await context.FollowupAsync(response[halfway..], true);
+                }
+                else
+                {
+                    await context.EditResponseAsync(response);
+                }
             }
             [Command("edit")]
             [Description("Edit the specified BOTC script")]
@@ -586,6 +667,8 @@ namespace DeBOTCBot
                 info.Log($"Editing script with name: \"{script}\"");
                 await context.DeferResponseAsync(true);
                 string response;
+                bool split = false;
+                int halfway = -1;
                 try
                 {
                     if (info.botcGame.ScriptExists(script, out string correctedScript))
@@ -605,6 +688,7 @@ namespace DeBOTCBot
                                 }
                             }
                         }
+                        halfway = response.Length;
                         string[] toRemoveArray = remove.Split(",");
                         List<string> tokensToRemove = [];
                         if (toRemoveArray.Length > 0)
@@ -619,11 +703,12 @@ namespace DeBOTCBot
                                 }
                             }
                         }
-                        List<string> finalTokens = [.. info.botcGame.scripts[correctedScript]];
+                        List<string> finalTokens = [..info.botcGame.scripts[correctedScript]];
                         finalTokens.AddRange(tokensToAdd);
                         finalTokens.RemoveAll(tokensToRemove.Contains);
-                        info.botcGame.scripts[correctedScript] = [.. finalTokens];
+                        info.botcGame.scripts[correctedScript] = [..finalTokens];
                         await DeBOTCBot.SaveServerInfo(info);
+                        split = response.Length > 2000;
                     }
                     else
                     {
@@ -636,7 +721,15 @@ namespace DeBOTCBot
                     response = $"Something went wrong while editing script: \"{script}\"!";
                     info.Log(response);
                 }
-                await context.EditResponseAsync(response);
+                if (split && halfway > -1)
+                {
+                    await context.EditResponseAsync(response[..halfway]);
+                    await context.FollowupAsync(response[halfway..], true);
+                }
+                else
+                {
+                    await context.EditResponseAsync(response);
+                }
             }
             [Command("remove")]
             [Description("Remove a specified BOTC script")]
@@ -679,13 +772,15 @@ namespace DeBOTCBot
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
                 info.Log($"Displaying night order of script with name: \"{script}\"");
-                string response;
                 await context.DeferResponseAsync(true);
+                string response;
+                bool split = false;
+                int halfway = -1;
                 try
                 {
                     if (info.botcGame.ScriptExists(script, out string correctedScript))
                     {
-                        response = $"# {correctedScript}\r{DeBOTCBot.GenerateNightOrderMessage(info.botcGame.scripts[correctedScript])}";
+                        response = $"# {correctedScript}\r{DeBOTCBot.GenerateNightOrderMessage(info.botcGame.scripts[correctedScript], out split, out halfway)}";
                     }
                     else
                     {
@@ -698,7 +793,15 @@ namespace DeBOTCBot
                     response = $"Something went wrong while displaying the night order of script: \"{script}\"!";
                     info.Log(response);
                 }
-                await context.EditResponseAsync(response);
+                if (split && halfway > -1)
+                {
+                    await context.EditResponseAsync(response[..halfway]);
+                    await context.FollowupAsync(response[halfway..]);
+                }
+                else
+                {
+                    await context.EditResponseAsync(response);
+                }
             }
             [Command("roll")]
             [Description("Roll a grimoire")]
@@ -709,13 +812,15 @@ namespace DeBOTCBot
                 await context.DeferResponseAsync(true);
                 string response;
                 string responseNext = string.Empty;
+                bool split = false;
+                int halfway = -1;
                 try
                 {
                     if (info.botcGame.ScriptExists(script, out string correctedScript))
                     {
                         string[] scriptTokens = info.botcGame.scripts[correctedScript];
                         response = DeBOTCBot.GenerateTokenMessage(info, scriptTokens, players);
-                        responseNext = $"{DeBOTCBot.GenerateNightOrderMessage(scriptTokens)}";
+                        responseNext = $"{DeBOTCBot.GenerateNightOrderMessage(scriptTokens, out split, out halfway)}";
                     }
                     else
                     {
@@ -731,7 +836,15 @@ namespace DeBOTCBot
                 await context.EditResponseAsync(response);
                 if (responseNext != string.Empty)
                 {
-                    await context.FollowupAsync(responseNext, true);
+                    if (split && halfway > -1)
+                    {
+                        await context.FollowupAsync(responseNext[..halfway], true);
+                        await context.FollowupAsync(responseNext[halfway..], true);
+                    }
+                    else
+                    {
+                        await context.FollowupAsync(responseNext, true);
+                    }
                 }
             }
             [Command("default")]
@@ -1123,7 +1236,7 @@ namespace DeBOTCBot
             }
             Serialization.ResetDebugLog();
             DiscordClientBuilder builder = DiscordClientBuilder.CreateDefault(token, Intents);
-            builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated).HandleGuildDownloadCompleted(BotReady).HandleComponentInteractionCreated(ButtonPressed)).UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) }).UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands)); });
+            builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated).HandleGuildDownloadCompleted(BotReady).HandleComponentInteractionCreated(ButtonPressed)).UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) }).UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands), 1396921797160472576); });
             DiscordClient client = builder.Build();
             await client.ConnectAsync(new DiscordActivity("Blood on The Clocktower", DiscordActivityType.Playing), DiscordUserStatus.Online);
             await Task.Delay(-1);
@@ -1293,21 +1406,31 @@ namespace DeBOTCBot
                             string script = args.Values.Single();
                             string tokensString;
                             string orderString = string.Empty;
+                            bool split = false;
+                            int halfway = -1;
                             try
                             {
                                 string[] scriptTokens = info.botcGame.scripts[script];
                                 tokensString = GenerateTokenMessage(info, scriptTokens, currentPlayers.Count);
-                                orderString = $"\r{GenerateNightOrderMessage(scriptTokens)}";
+                                orderString = $"\r{GenerateNightOrderMessage(scriptTokens, out split, out halfway)}";
                             }
                             catch
                             {
                                 tokensString = "Something went wrong while generating a grimoire! Are there enough of each token type for this number of players?";
                                 info.Log(tokensString);
                             }
-                            await client.SendMessageAsync(info.storytellerChannel, tokensString);
+                            DiscordMessage message = await client.SendMessageAsync(info.storytellerChannel, tokensString);
                             if (orderString != string.Empty)
                             {
-                                await client.SendMessageAsync(info.storytellerChannel, orderString);
+                                if (split && halfway > -1)
+                                {
+                                    message = await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[..halfway]).WithReply(message.Id));
+                                    await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[halfway..]).WithReply(message.Id));
+                                }
+                                else
+                                {
+                                    await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString).WithReply(message.Id));
+                                }
                             }
                             break;
                         }
@@ -1423,7 +1546,7 @@ namespace DeBOTCBot
             }
             return finalString;
         }
-        public static string GenerateNightOrderMessage(string[] scriptNames)
+        public static string GenerateNightOrderMessage(string[] scriptNames, out bool split, out int half)
         {
             string finalString = "## Night 0 Order:\r";
             List<Token> scriptTokens = [.. BOTCCharacters.allTokens.Values.Where((x) => scriptNames.Contains(x.characterName) && x.nightOrder != (-1, -1))];
@@ -1437,6 +1560,7 @@ namespace DeBOTCBot
                 }
                 finalString += $"### {token.characterName}\r{token.orderFirstDescription}\r";
             }
+            half = finalString.Length;
             finalString += "\r## Other Nights Order:\r";
             scriptTokens.Sort((x, y) => x.nightOrder.Item2.CompareTo(y.nightOrder.Item2));
             for (int i = 0; i < scriptTokens.Count; i++)
@@ -1448,6 +1572,7 @@ namespace DeBOTCBot
                 }
                 finalString += $"### {token.characterName}\r{token.orderOtherDescription}\r";
             }
+            split = finalString.Length > 2000;
             return finalString;
         }
     }

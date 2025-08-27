@@ -107,7 +107,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	<details>
 	<summary>/botc pandemonium</summary>
 	
-	Sends links to the official BOTC website and Patreon  
+	Sends an ephemeral message with links to the official BOTC website and Patreon  
 	
 	</details>
 
@@ -126,9 +126,16 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc scripts show</summary>
+	<summary>/botc scripts all</summary>
 	
 	Sends an ephemeral message with a list of all available scripts, with characters, organised by type  
+	
+	</details>
+ 
+	<details>
+	<summary>/botc scripts show</summary>
+	
+	Sends an ephemeral message with a list of all characters in a specified script, organised by type  
 	
 	</details>
 

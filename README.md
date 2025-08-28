@@ -103,6 +103,15 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	Forces bot to remove server information, resetting to default values  
 	
 	</details>
+ 
+	<details>
+	<summary>/botc storyteller</summary>
+	
+	### Required Permission: Manage Channels  
+ 
+	Lets you select a member to become a storyteller. Only one storyteller at a time, will end the game if ongoing  
+	
+	</details>
 
 	<details>
 	<summary>/botc pandemonium</summary>

@@ -39,60 +39,91 @@
     }
     public class Token
     {
-        public string characterName;
+        public readonly string characterName;
         public CharacterType characterType;
-        public TypeRanges typesToAdd;
-        public string[] characterToAdd;
-        public string[] forbiddenPair;
-        public bool specialRule;
-        public string description;
-        public (int, int) nightOrder;
-        public string orderFirstDescription;
-        public string orderOtherDescription;
-        public Token(string name, CharacterType type = CharacterType.Townsfolk, TypeRanges addingTypes = null, string[] addingCharacters = null, string[] removingCharacters = null, bool rule = false, int firstOrder = -1, int otherOrder = -1, string firstDesc = "", string otherDesc = "", string desc = "")
+        public readonly TypeRanges typesToAdd;
+        public readonly string[] characterToAdd;
+        public readonly string[] forbiddenPair;
+        public readonly bool specialRule;
+        public readonly CharacterType[] neighbourGuarantees;
+        public readonly string description;
+        public readonly (int, int) nightOrder;
+        public readonly string orderFirstDescription;
+        public readonly string orderOtherDescription;
+        public Token(string name, TypeRanges addingTypes = null, string[] addingCharacters = null, string[] removingCharacters = null, bool rule = false, CharacterType[] neighbours = null, int firstOrder = -1, int otherOrder = -1, string firstDesc = "", string otherDesc = "", string desc = "")
         {
             characterName = name;
-            characterType = type;
             addingTypes ??= new();
             typesToAdd = addingTypes;
             characterToAdd = addingCharacters;
             forbiddenPair = removingCharacters;
             specialRule = rule;
+            neighbourGuarantees = neighbours;
+            if (neighbourGuarantees == null)
+            {
+                neighbourGuarantees = [];
+            }
+            else if (neighbourGuarantees.Length > 2)
+            {
+                neighbourGuarantees = [neighbourGuarantees[0], neighbourGuarantees[1]];
+            }
             description = desc;
             nightOrder = (firstOrder, otherOrder);
             orderFirstDescription = firstDesc;
             orderOtherDescription = otherDesc;
         }
     }
-    public class Player
+    public class Player(ulong id, string displayName)
     {
-        public Player(int length, int index, Token character)
-        {
-            totalPlayers = length;
-            seat = index;
-            token = character;
-            int left = seat - 1;
-            int right = seat + 1;
-            if (left < 0)
-            {
-                left = totalPlayers - 1;
-            }
-            if (right >= totalPlayers)
-            {
-                right = 0;
-            }
-            neighbours = (left, right);
-        }
+        public string name = displayName;
+        public ulong memberID = id;
         public int totalPlayers;
         public int seat;
         public Token token;
         public (int, int) neighbours;
+        public bool swapSafe = false;
+        public void SetData(int index, Token character, int count)
+        {
+            totalPlayers = count;
+            seat = index;
+            token = character;
+            neighbours = CalculateNeighbours(index);
+            swapSafe = false;
+        }
+        public void NewSeat(int index)
+        {
+            seat = index;
+            neighbours = CalculateNeighbours(index);
+            swapSafe = true;
+        }
+        public (int, int) CalculateNeighbours(int index)
+        {
+            return (DeBOTCBot.Iterate(totalPlayers, index, false), DeBOTCBot.Iterate(totalPlayers, index));
+        }
+    }
+    public class Nomination
+    {
+        public Nomination(Player player, bool nominating)
+        {
+            if (nominating)
+            {
+                nominator = player;
+            }
+            else
+            {
+                nominee = player;
+            }
+        }
+        public Player nominator;
+        public Player nominee;
     }
     public class BOTCCharacters
     {
         public static readonly Dictionary<string, Token> allTokens = GenerateTokens();
         public ServerInfo info;
         public Dictionary<string, string[]> scripts;
+        public List<Player> playerSeats = [];
+        public Nomination currentNomination;
         public void Initialize(ServerInfo newInfo = null)
         {
             if (newInfo != null)
@@ -108,8 +139,9 @@
                 scripts.Add("Bad Moon Rising", ["Po", "Shabaloth", "Pukka", "Zombuul", "Mastermind", "Assassin", "Devil's Advocate", "Godfather", "Moonchild", "Tinker", "Lunatic", "Goon", "Fool", "Pacifist", "Tea Lady", "Minstrel", "Professor", "Courtier", "Gossip", "Gambler", "Innkeeper", "Exorcist", "Chambermaid", "Sailor", "Grandmother"]);
             }
         }
-        public string[] RollTokens(string[] script, int playerCount)
+        public List<Token> RollTokens(string[] script, int playerCount, out bool monstaGame)
         {
+            monstaGame = false;
             List<Token> scriptTokens = [];
             for (int i = 0; i < script.Length; i++)
             {
@@ -123,16 +155,17 @@
                     info.Log($"\"{name}\" was not a valid token, did you misspell it?");
                 }
             }
-            List<Token> chosenCharacters = ChooseCharacters(scriptTokens, playerCount);
-            if (chosenCharacters == null)
+            List<Token> tokens = ChooseCharacters(scriptTokens, playerCount);
+            if (tokens == null)
             {
                 return null;
             }
-            List<string> characterNames = [];
-            for (int i = 0; i < chosenCharacters.Count; i++)
+            monstaGame = !tokens.Where((x) => x.characterType == CharacterType.Demon).Any() && !tokens.Contains(allTokens["Summoner"]);
+            tokens.Sort((x, y) => x.characterType.CompareTo(y.characterType));
+            for (int i = 0; i < tokens.Count; i++)
             {
                 ConsoleColor consoleColor;
-                switch (chosenCharacters[i].characterType)
+                switch (tokens[i].characterType)
                 {
                     case CharacterType.Demon:
                         {
@@ -155,10 +188,138 @@
                             break;
                         }
                 }
-                info.Log($"Token {i + 1}: \"{chosenCharacters[i].characterName}\"", consoleColor);
-                characterNames.Add(chosenCharacters[i].characterName);
+                info.Log($"Token {i + 1}: \"{tokens[i].characterName}\"", consoleColor);
             }
-            return [..characterNames.OrderBy((x) => allTokens[x].characterType)];
+            if (playerSeats.Count == tokens.Count)
+            {
+                List<Token> availableTokens = [..tokens];
+                List<Player> checkNeighbours = [];
+                for (int i = 0; i < playerSeats.Count; i++)
+                {
+                    if (availableTokens.Count == 0)
+                    {
+                        break;
+                    }
+                    Player player = playerSeats[i];
+                    Token token = availableTokens[Random.Shared.Next(0, availableTokens.Count)];
+                    info.Log($"Setting player \"{player.name}\" to character: \"{token.characterName}\"");
+                    player.SetData(i, token, playerSeats.Count);
+                    availableTokens.Remove(token);
+                    if (token.neighbourGuarantees.Length > 0)
+                    {
+                        checkNeighbours.Add(player);
+                    }
+                }
+                for (int i = 0; i < checkNeighbours.Count; i++)
+                {
+                    Player player = checkNeighbours[i];
+                    info.Log($"Checking neighbours of \"{player.name}\"");
+                    (Token, Token) neighbours = (playerSeats[player.neighbours.Item1].token, playerSeats[player.neighbours.Item2].token);
+                    if (player.token.neighbourGuarantees.Length == 1)
+                    {
+                        CharacterType type = (CharacterType)Enum.ToObject(typeof(CharacterType), player.token.neighbourGuarantees[0]);
+                        info.Log($"Checking type \"{type}\" against type \"{neighbours.Item1.characterType}\" and \"{neighbours.Item2.characterType}\"");
+                        if (neighbours.Item1.characterType != type && neighbours.Item2.characterType != type)
+                        {
+                            List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+                            byte typeValue = (byte)type;
+                            while (swappablePlayers.Count == 0)
+                            {
+                                typeValue++;
+                                if (typeValue > (byte)CharacterType.Townsfolk)
+                                {
+                                    break;
+                                }
+                                type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
+                                swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+                            }
+                            Player neighbour;
+                            if (Random.Shared.Next(0, 2) == 0)
+                            {
+                                neighbour = playerSeats[player.neighbours.Item1];
+                            }
+                            else
+                            {
+                                neighbour = playerSeats[player.neighbours.Item2];
+                            }
+                            info.Log($"Swapping player \"{neighbour.name}\" with a player of type \"{type}\"");
+                            Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
+                            if (player.token.characterName == "Marionette")
+                            {
+                                Player summoner = swappablePlayers.Where((x) => x.token.characterName == "Summoner").SingleOrDefault();
+                                if (summoner != null)
+                                {
+                                    swappingPlayer = summoner;
+                                }
+                            }
+                            info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
+                            int swappingIndex = playerSeats.IndexOf(swappingPlayer);
+                            int neighbourIndex = playerSeats.IndexOf(neighbour);
+                            neighbour.NewSeat(swappingIndex);
+                            swappingPlayer.NewSeat(neighbourIndex);
+                            (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
+                        }
+                    }
+                    else
+                    {
+                        int randomIndex = Random.Shared.Next(0, 2);
+                        CharacterType type = player.token.neighbourGuarantees[randomIndex];
+                        if (neighbours.Item1.characterType != type)
+                        {
+                            List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+                            byte typeValue = (byte)type;
+                            while (swappablePlayers.Count == 0)
+                            {
+                                typeValue++;
+                                if (typeValue > (byte)CharacterType.Townsfolk)
+                                {
+                                    break;
+                                }
+                                type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
+                                swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+                            }
+                            info.Log($"Swapping player \"{playerSeats[player.neighbours.Item1].name}\" with a player of type \"{type}\"");
+                            Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
+                            info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
+                            int swappingIndex = playerSeats.IndexOf(swappingPlayer);
+                            int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item1]);
+                            playerSeats[player.neighbours.Item1].NewSeat(swappingIndex);
+                            swappingPlayer.NewSeat(neighbourIndex);
+                            (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
+                        }
+                        randomIndex++;
+                        if (randomIndex > 1)
+                        {
+                            randomIndex = 0;
+                        }
+                        type = player.token.neighbourGuarantees[randomIndex];
+                        if (neighbours.Item2.characterType != type)
+                        {
+                            List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+                            byte typeValue = (byte)type;
+                            while (swappablePlayers.Count == 0)
+                            {
+                                typeValue++;
+                                if (typeValue > (byte)CharacterType.Townsfolk)
+                                {
+                                    break;
+                                }
+                                type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
+                                swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+                            }
+                            info.Log($"Swapping player \"{playerSeats[player.neighbours.Item2].name}\" with a player of type \"{type}\"");
+                            Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
+                            info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
+                            int swappingIndex = playerSeats.IndexOf(swappingPlayer);
+                            int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item2]);
+                            playerSeats[player.neighbours.Item2].NewSeat(swappingIndex);
+                            swappingPlayer.NewSeat(neighbourIndex);
+                            (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
+                        }
+                    }
+                }
+            }
+            return tokens;
         }
         public List<Token> ChooseCharacters(List<Token> scriptTokens, int playerCount)
         {
@@ -192,26 +353,6 @@
             {
                 iterations++;
                 completedSpecialRules.RemoveAll((x) => !initialPicks.Contains(allTokens[x]));
-                initialPicks = SpecialRulesAdjustments(scriptTokens, initialPicks, completedSpecialRules, out completedSpecialRules, counts, out counts);
-                for (int i = 0; i < initialPicks.Count; i++)
-                {
-                    Token token = initialPicks[i];
-                    if (countChangers.ContainsKey(token))
-                    {
-                        continue;
-                    }
-                    int[] additions = CalculateAdditions(token, counts, out bool changed);
-                    if (changed)
-                    {
-                        for (int j = 0; j < counts.Length; j++)
-                        {
-                            counts[j] += additions[j];
-                        }
-                        countChangers.Add(token, additions);
-                        info.Log($"{token.characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
-                    }
-                }
-                info.Log($"Current counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
                 for (int i = 0; i < counts.Length; i++)
                 {
                     CharacterType type = (CharacterType)Enum.ToObject(typeof(CharacterType), (byte)i);
@@ -284,6 +425,57 @@
                         }
                     }
                 }
+                for (int i = 0; i < initialPicks.Count; i++)
+                {
+                    Token token = initialPicks[i];
+                    if (countChangers.ContainsKey(token))
+                    {
+                        continue;
+                    }
+                    int[] additions = CalculateAdditions(token, counts, out bool changed);
+                    if (changed)
+                    {
+                        for (int j = 0; j < counts.Length; j++)
+                        {
+                            counts[j] += additions[j];
+                        }
+                        countChangers.Add(token, additions);
+                        info.Log($"{token.characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
+                    }
+                }
+                initialPicks = SpecialRulesAdjustments(scriptTokens, initialPicks, completedSpecialRules, out completedSpecialRules, out Dictionary<Token, int[]> specialAdditions);
+                List<Token> countChangersList = [..countChangers.Keys];
+                for (int i = 0; i < countChangersList.Count; i++)
+                {
+                    if (initialPicks.Contains(countChangersList[i]))
+                    {
+                        continue;
+                    }
+                    int[] additions = countChangers[countChangersList[i]];
+                    for (int j = 0; j < additions.Length; j++)
+                    {
+                        counts[j] -= additions[j];
+                    }
+                    countChangers.Remove(countChangersList[i]);
+                }
+                List<Token> specialAddTokens = [.. specialAdditions.Keys];
+                for (int i = 0; i < specialAddTokens.Count; i++)
+                {
+                    int[] additions = specialAdditions[specialAddTokens[i]];
+                    for (int j = 0; j < additions.Length; j++)
+                    {
+                        counts[j] += additions[j];
+                    }
+                    if (!countChangers.TryAdd(specialAddTokens[i], additions))
+                    {
+                        for (int j = 0; j < additions.Length; j++)
+                        {
+                            countChangers[specialAddTokens[i]][j] += additions[j];
+                        }
+                    }
+                    info.Log($"{specialAddTokens[i].characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
+                }
+                info.Log($"Current counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
                 int countsCorrected = 0;
                 for (int i = 0; i < counts.Length; i++)
                 {
@@ -345,10 +537,10 @@
             }
             return additions;
         }
-        public List<Token> SpecialRulesAdjustments(List<Token> scriptTokens, List<Token> adjustedList, List<string> completedSpecialRules, out List<string> newCompleted, int[] originalCounts, out int[] specialCounts)
+        public List<Token> SpecialRulesAdjustments(List<Token> scriptTokens, List<Token> adjustedList, List<string> completedSpecialRules, out List<string> newCompleted, out Dictionary<Token, int[]> specialCounts)
         {
-            specialCounts = originalCounts;
-            List<KeyValuePair<Token, Token>> finalAdditions = [];
+            specialCounts = [];
+            List<(Token, Token)> finalAdditions = [];
             Dictionary<Token, Token> finalRemovals = [];
             bool blockEvil = false;
             for (int i = 0; i < adjustedList.Count; i++)
@@ -363,7 +555,7 @@
                 {
                     for (int j = 0; j < token.characterToAdd.Length; j++)
                     {
-                        finalAdditions.Add(new KeyValuePair<Token, Token>(token, allTokens[token.characterToAdd[j]]));
+                        finalAdditions.Add((token, allTokens[token.characterToAdd[j]]));
                     }
                     completedSpecialRules.Add(token.characterName);
                 }
@@ -402,7 +594,7 @@
                         {
                             List<Token> script = scriptTokens;
                             int removed = adjustedList.RemoveAll((x) => x != token);
-                            specialCounts = [0, 0, 0, 1];
+                            specialCounts.Add(token, [0, 0, 0, 1]);
                             info.Log($"(Atheist) Removing Demons and Minions");
                             script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType == CharacterType.Demon || x.characterType == CharacterType.Minion);
                             while (removed > 0)
@@ -412,7 +604,7 @@
                                     break;
                                 }
                                 int index = Random.Shared.Next(0, script.Count);
-                                specialCounts[(int)script[index].characterType] += 1;
+                                specialCounts[token][(int)script[index].characterType] += 1;
                                 adjustedList.Add(script[index]);
                                 info.Log($"(Atheist) Adding a {script[index].characterName}");
                                 removed--;
@@ -424,13 +616,17 @@
                         {
                             if (adjustedList.Contains(allTokens["Baron"]))
                             {
+                                List<Token> script = scriptTokens;
+                                List<Token> availableTownsfolks = script.Where((x) => x.characterType == CharacterType.Townsfolk).ToList();
                                 List<Token> outsiders = adjustedList.Where((x) => x.characterType == CharacterType.Outsider).ToList();
                                 if (outsiders.Count > 0 && Random.Shared.Next(0, 2) == 0)
                                 {
                                     int removeIndex = Random.Shared.Next(0, outsiders.Count);
-                                    info.Log($"(Heretic) Removing a {outsiders[removeIndex].characterName}!");
-                                    specialCounts[(int)outsiders[removeIndex].characterType] -= 1;
+                                    int addIndex = Random.Shared.Next(0, availableTownsfolks.Count);
+                                    info.Log($"(Heretic) Replacing a {outsiders[removeIndex].characterName} with a {availableTownsfolks[addIndex].characterName}!");
+                                    specialCounts.Add(token, [0, 0, -1, 1]);
                                     adjustedList.Remove(outsiders[removeIndex]);
+                                    adjustedList.Add(availableTownsfolks[addIndex]);
                                 }
                             }
                             break;
@@ -439,7 +635,7 @@
                         {
                             List<Token> script = scriptTokens;
                             int removed = adjustedList.RemoveAll((x) => x.characterType == CharacterType.Minion);
-                            specialCounts[(int)CharacterType.Minion] -= removed;
+                            specialCounts.Add(token, [0, -removed, 0, 0]);
                             info.Log($"(Kazali) Removing Minions");
                             script.Remove(token);
                             script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType != CharacterType.Townsfolk || adjustedList.Contains(x));
@@ -450,7 +646,7 @@
                                     break;
                                 }
                                 int index = Random.Shared.Next(0, script.Count);
-                                specialCounts[(int)script[index].characterType] += 1;
+                                specialCounts[token][(int)script[index].characterType] += 1;
                                 adjustedList.Add(script[index]);
                                 info.Log($"(Kazali) Adding a {script[index].characterName}");
                                 script.RemoveAt(index);
@@ -467,8 +663,8 @@
                                 int townsIndex = Random.Shared.Next(0, townsfolks.Count);
                                 int outsIndex = Random.Shared.Next(0, availableOutsiders.Count);
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
-                                specialCounts[(int)CharacterType.Townsfolk] -= 1;
-                                specialCounts[(int)CharacterType.Outsider] += 1;
+                                specialCounts[token][(int)CharacterType.Townsfolk] -= 1;
+                                specialCounts[token][(int)CharacterType.Outsider] += 1;
                                 info.Log($"(Kazali) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
                                 townsfolks.RemoveAt(townsIndex);
                                 availableOutsiders.RemoveAt(outsIndex);
@@ -479,7 +675,7 @@
                         {
                             List<Token> script = scriptTokens;
                             int removed = adjustedList.RemoveAll((x) => x.characterType == CharacterType.Minion || tokenForbidden.Contains(x.characterName));
-                            specialCounts[(int)CharacterType.Minion] -= removed;
+                            specialCounts.Add(token, [0, -removed, 0, 0]);
                             info.Log($"(Legion) Removing Minions");
                             script.Remove(token);
                             script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType == CharacterType.Demon || x.characterType == CharacterType.Minion || adjustedList.Contains(x));
@@ -490,7 +686,7 @@
                                     break;
                                 }
                                 int index = Random.Shared.Next(0, script.Count);
-                                specialCounts[(int)script[index].characterType] += 1;
+                                specialCounts[token][(int)script[index].characterType] += 1;
                                 adjustedList.Add(script[index]);
                                 info.Log($"(Legion) Adding a {script[index].characterName}");
                                 script.RemoveAt(index);
@@ -502,8 +698,8 @@
                             {
                                 List<Token> toReplace = adjustedList.Where((x) => x.characterType != CharacterType.Demon).ToList();
                                 int replacingIndex = Random.Shared.Next(0, toReplace.Count);
-                                specialCounts[(int)toReplace[replacingIndex].characterType] -= 1;
-                                specialCounts[(int)token.characterType] += 1;
+                                specialCounts[token][(int)toReplace[replacingIndex].characterType] -= 1;
+                                specialCounts[token][(int)token.characterType] += 1;
                                 adjustedList[adjustedList.IndexOf(toReplace[replacingIndex])] = token;
                                 info.Log($"(Legion) Replacing a {toReplace[replacingIndex].characterName} with a {token.characterName}");
                                 legionCount++;
@@ -515,8 +711,8 @@
                             List<Token> script = scriptTokens;
                             List<Token> availableMinions = script.Where((x) => !tokenForbidden.Contains(x.characterName) && x.characterType == CharacterType.Minion && !adjustedList.Contains(x)).ToList();
                             int minionIndex = Random.Shared.Next(0, availableMinions.Count);
-                            specialCounts[(int)CharacterType.Demon] -= 1;
-                            specialCounts[(int)CharacterType.Minion] += 1;
+                            specialCounts.Add(token, [-1, 0, 0, 0]);
+                            specialCounts[token][(int)CharacterType.Minion] += 1;
                             adjustedList[adjustedList.IndexOf(token)] = availableMinions[minionIndex];
                             info.Log($"(Lil' Monsta) Replacing a {token.characterName} with a {availableMinions[minionIndex].characterName}");
                             break;
@@ -525,25 +721,17 @@
                         {
                             List<Token> script = scriptTokens;
                             List<Token> townsfolks = adjustedList.Where((x) => x.characterType == CharacterType.Townsfolk).ToList();
-                            List<Token> outsiders = adjustedList.Where((x) => x.characterType == CharacterType.Outsider).ToList();
                             List<Token> availableOutsiders = script.Where((x) => !tokenForbidden.Contains(x.characterName) && x.characterType == CharacterType.Outsider && !adjustedList.Contains(x)).ToList();
-                            List<Token> availableMinions = script.Where((x) => !tokenForbidden.Contains(x.characterName) && x.characterType == CharacterType.Minion && !adjustedList.Contains(x)).ToList();
-                            List<Token> toReplace = [..townsfolks, ..outsiders];
-                            int replacingIndex = Random.Shared.Next(0, toReplace.Count);
-                            int minionIndex = Random.Shared.Next(0, availableMinions.Count);
-                            specialCounts[(int)toReplace[replacingIndex].characterType] -= 1;
-                            specialCounts[(int)CharacterType.Minion] += 1;
-                            adjustedList[adjustedList.IndexOf(toReplace[replacingIndex])] = availableMinions[minionIndex];
-                            townsfolks.Remove(toReplace[replacingIndex]);
-                            int max = (int)MathF.Min(availableOutsiders.Count, townsfolks.Count);
+                            int max = Math.Min(availableOutsiders.Count, townsfolks.Count);
                             int targetOutsiders = Random.Shared.Next(0, max);
                             targetOutsiders -= Random.Shared.Next(0, (int)MathF.Floor(max / 2));
+                            specialCounts.Add(token, [0, 0, 0, 0]);
                             for (int j = 0; j < targetOutsiders; j++)
                             {
                                 int townsIndex = Random.Shared.Next(0, townsfolks.Count);
                                 int outsIndex = Random.Shared.Next(0, availableOutsiders.Count);
-                                specialCounts[(int)CharacterType.Townsfolk] -= 1;
-                                specialCounts[(int)CharacterType.Outsider] += 1;
+                                specialCounts[token][(int)CharacterType.Townsfolk] -= 1;
+                                specialCounts[token][(int)CharacterType.Outsider] += 1;
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
                                 info.Log($"(Lord of Typhon) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
                                 townsfolks.RemoveAt(townsIndex);
@@ -580,12 +768,13 @@
                             int max = (int)MathF.Min(availableOutsiders.Count, townsfolks.Count);
                             int targetOutsiders = Random.Shared.Next(0, max);
                             targetOutsiders -= Random.Shared.Next(0, (int)MathF.Floor(max / 2));
+                            specialCounts.Add(token, [0, 0, 0, 0]);
                             for (int j = 0; j < targetOutsiders; j++)
                             {
                                 int townsIndex = Random.Shared.Next(0, townsfolks.Count);
                                 int outsIndex = Random.Shared.Next(0, availableOutsiders.Count);
-                                specialCounts[(int)CharacterType.Townsfolk] -= 1;
-                                specialCounts[(int)CharacterType.Outsider] += 1;
+                                specialCounts[token][(int)CharacterType.Townsfolk] -= 1;
+                                specialCounts[token][(int)CharacterType.Outsider] += 1;
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
                                 info.Log($"(Xaan) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
                                 townsfolks.RemoveAt(townsIndex);
@@ -602,37 +791,38 @@
             }
             for (int i = 0; i < finalAdditions.Count; i++)
             {
-                if (!adjustedList.Contains(finalAdditions[i].Key) || adjustedList.Contains(finalAdditions[i].Value))
+                if (!adjustedList.Contains(finalAdditions[i].Item1) || adjustedList.Contains(finalAdditions[i].Item2))
                 {
                     continue;
                 }
                 List<Token> toReplace = adjustedList.Where(finalRemovals.ContainsValue).ToList();
-                toReplace.Remove(finalAdditions[i].Key);
+                toReplace.Remove(finalAdditions[i].Item1);
                 if (toReplace.Count == 0)
                 {
-                    toReplace = adjustedList.Where((x) => x.characterType == finalAdditions[i].Value.characterType).ToList();
-                    toReplace.Remove(finalAdditions[i].Key);
+                    toReplace = adjustedList.Where((x) => x.characterType == finalAdditions[i].Item2.characterType).ToList();
+                    toReplace.Remove(finalAdditions[i].Item1);
                     if (toReplace.Count == 0)
                     {
                         toReplace = adjustedList.Where((x) => x.characterType == CharacterType.Outsider).ToList();
-                        toReplace.Remove(finalAdditions[i].Key);
+                        toReplace.Remove(finalAdditions[i].Item1);
                         if (toReplace.Count == 0)
                         {
                             toReplace = adjustedList.Where((x) => x.characterType == CharacterType.Townsfolk).ToList();
-                            toReplace.Remove(finalAdditions[i].Key);
+                            toReplace.Remove(finalAdditions[i].Item1);
                             if (toReplace.Count == 0)
                             {
-                                info.Log($"No valid tokens were found to replace with {finalAdditions[i].Value.characterName}!");
+                                info.Log($"No valid tokens were found to replace with {finalAdditions[i].Item2.characterName}!");
                                 continue;
                             }
                         }
                     }
                 }
                 Token replacingToken = toReplace[Random.Shared.Next(0, toReplace.Count)];
-                info.Log($"(Final Additions) Replacing a {replacingToken.characterName} with a {finalAdditions[i].Value.characterName}");
-                specialCounts[(int)replacingToken.characterType] -= 1;
-                specialCounts[(int)finalAdditions[i].Value.characterType] += 1;
-                adjustedList[adjustedList.IndexOf(replacingToken)] = finalAdditions[i].Value;
+                info.Log($"(Final Additions) Replacing a {replacingToken.characterName} with a {finalAdditions[i].Item2.characterName}");
+                specialCounts.TryAdd(finalAdditions[i].Item1, [0, 0, 0, 0]);
+                specialCounts[finalAdditions[i].Item1][(int)replacingToken.characterType] -= 1;
+                specialCounts[finalAdditions[i].Item1][(int)finalAdditions[i].Item2.characterType] += 1;
+                adjustedList[adjustedList.IndexOf(replacingToken)] = finalAdditions[i].Item2;
             }
             foreach (KeyValuePair<Token, Token> pair in finalRemovals)
             {
@@ -641,6 +831,8 @@
                     continue;
                 }
                 Token removingToken = pair.Value;
+                specialCounts.TryAdd(pair.Key, [0, 0, 0, 0]);
+                specialCounts[pair.Key][(int)removingToken.characterType] -= 1;
                 adjustedList.Remove(removingToken);
                 List<Token> script = scriptTokens;
                 List<string> keyForbiddenPairs = [..pair.Key.forbiddenPair];
@@ -653,6 +845,7 @@
                 int newIndex = Random.Shared.Next(0, availableTokens.Count);
                 Token newToken = availableTokens[newIndex];
                 info.Log($"(Final Removals) Adding a {newToken.characterName} to replace a {removingToken.characterName}");
+                specialCounts[pair.Key][(int)newToken.characterType] += 1;
                 adjustedList.Add(newToken);
             }
             newCompleted = completedSpecialRules;
@@ -709,9 +902,9 @@
             demons.Add(new("Kazali", rule: true, firstOrder: 1, firstDesc: "Kazali chooses as many players as the grimoire allows to become a minion of their choice",  otherOrder: 42, otherDesc: "Kazali chooses a player to kill", desc: "Each night*, choose a player: they die. You choose which players are which Minions\r[-? to +? Outsiders]"));
             demons.Add(new("Legion", removingCharacters: ["Engineer"], rule: true, otherOrder: 26, otherDesc: "The storyteller chooses a player to kill", desc: "Each night*, a player might die. Executions fail if only evil voted. You register as a Minion too\r[Most players are Legion]"));
             demons.Add(new("Leviathan", firstOrder: 66, firstDesc: "At dawn, announce publicly that the Leviathan is in play", otherOrder: 82, otherDesc: "At dawn, if 2 good players are executed, evil wins. At the dawn of the 5th day, evil wins", desc: "If more than 1 good player is executed, evil wins. All players know you are in play. After day 5, evil wins"));
-            demons.Add(new("Lil' Monsta", rule: true, firstOrder: 18, firstDesc: "Minions choose which minion holds Lil' Monsta", otherOrder: 40, otherDesc: "Minions choose which minion holds Lil' Monsta, the storyteller might choose a player to kill", desc: "Each night, Minions choose who babysits Lil' Monsta & \"is the Demon\". Each night*, a player might die\r[+1 Minion]"));
+            demons.Add(new("Lil' Monsta", removingCharacters: ["Summoner"], rule: true, firstOrder: 18, firstDesc: "Minions choose which minion holds Lil' Monsta", otherOrder: 40, otherDesc: "Minions choose which minion holds Lil' Monsta, the storyteller might choose a player to kill", desc: "Each night, Minions choose who babysits Lil' Monsta & \"is the Demon\". Each night*, a player might die\r[+1 Minion]"));
             demons.Add(new("Lleech", firstOrder: 19, firstDesc: "Lleech chooses a player to poison and become their host", otherOrder: 39, otherDesc: "Lleech chooses a player to kill", desc: "Each night*, choose a player: they die. You start by choosing a player: they are poisoned. You die if & only if they are dead"));
-            demons.Add(new("Lord of Typhon", rule: true, firstOrder: 0, firstDesc: "The Lord of Typhon's neighbours seperately learn that they are minions and learn their roles", otherOrder: 35, otherDesc: "Lord of Typhon chooses a player to kill", desc: "Each night*, choose a player: they die. Evil characters are in a line. You are in the middle\r[+1 Minion. -? to +? Outsiders]"));
+            demons.Add(new("Lord of Typhon", removingCharacters: ["Summoner"], addingTypes: new(minions: new(1)), rule: true, neighbours: [CharacterType.Minion, CharacterType.Minion], firstOrder: 0, firstDesc: "The Lord of Typhon's neighbours seperately learn that they are minions and learn their roles", otherOrder: 35, otherDesc: "Lord of Typhon chooses a player to kill", desc: "Each night*, choose a player: they die. Evil characters are in a line. You are in the middle\r[+1 Minion. -? to +? Outsiders]"));
             demons.Add(new("No Dashii", otherOrder: 33, otherDesc: "No Dashii chooses a player to kill", desc: "Each night*, choose a player: they die. Your 2 Townsfolk neighbors are poisoned"));
             demons.Add(new("Ojo", otherOrder: 37, otherDesc: "Ojo chooses a character to kill. If their choice is not in play, the storyteller chooses a player to kill", desc: "Each night*, choose a character: they die. If they are not in play, the Storyteller chooses who dies"));
             demons.Add(new("Po", otherOrder: 31, otherDesc: "Po chooses a player to kill. If they choose nobody, the Po chooses 3 players to kill the next night", desc: "Each night*, you may choose a player: they die. If your last choice was no-one, choose 3 players tonight"));
@@ -745,7 +938,7 @@
             minions.Add(new("Goblin", desc: "If you publicly claim to be the Goblin when nominated & are executed that day, your team wins"));
             minions.Add(new("Godfather", addingTypes: new(outsiders: new(-1, 1, true)), removingCharacters: ["Heretic"], firstOrder: 26, firstDesc: "Godfather learns which outsiders are in play", otherOrder: 44, otherDesc: "If an outsider died today, Godfather chooses a player to kill", desc: "You start knowing which Outsiders are in play. If 1 died today, choose a player tonight: they die\r[-1 or +1 Outsider]"));
             minions.Add(new("Harpy", firstOrder: 33, firstDesc: "Harpy chooses a player to be \"mad\" that another player is evil", otherOrder: 20, otherDesc: "Harpy chooses a player to be \"mad\" that another player is evil", desc: "Each night, choose 2 players: tomorrow, the 1st player is mad that the 2nd is evil, or one or both might die"));
-            minions.Add(new("Marionette", firstOrder: 15, firstDesc: "The demon learns who the Marionette is", desc: "You think you are a good character, but you are not. The Demon knows who you are. You neighbor the Demon"));
+            minions.Add(new("Marionette", neighbours: [CharacterType.Demon], firstOrder: 15, firstDesc: "The demon learns who the Marionette is", desc: "You think you are a good character, but you are not. The Demon knows who you are. You neighbor the Demon"));
             minions.Add(new("Mastermind", desc: "If the Demon dies by execution (ending the game), play for 1 more day. If a player is then executed, their team loses"));
             minions.Add(new("Mezepheles", firstOrder: 34, firstDesc: "Mezepheles learns their secret phrase", otherOrder: 21, otherDesc: "Once per game, if a good player spoke the Mezepheles phrase today, they become evil", desc: "You start knowing a secret word. The 1st good player to say this word becomes evil that night"));
             minions.Add(new("Organ Grinder", firstOrder: 27, firstDesc: "Organ Grinder chooses whether or not to be drunk the following day", otherOrder: 14, otherDesc: "Organ Grinder chooses whether or not to be drunk the following day", desc: "All players keep their eyes closed when voting and the vote tally is secret. Each night, choose if you are drunk until dusk"));
@@ -754,7 +947,7 @@
             minions.Add(new("Psychopath", desc: "Each day, before nominations, you may publicly choose a player: they die. If executed, you only die if you lose roshambo"));
             minions.Add(new("Scarlet Woman", desc: "If there are 5 or more players alive & the Demon dies, you become the Demon"));
             minions.Add(new("Spy", removingCharacters: ["Heretic"], firstOrder: 60, firstDesc: "Spy sees the grimoire", otherOrder: 77, otherDesc: "Spy sees the grimoire", desc: "Each night, you see the Grimoire. You might register as good & as a Townsfolk or Outsider, even if dead"));
-            minions.Add(new("Summoner", addingTypes: new(demons: new(-1)), firstOrder: 11, firstDesc: "Summoner learns 3 bluffs", otherOrder: 22, otherDesc: "On the 3rd night, Summoner chooses a player to become a demon of their choice", desc: "You get 3 bluffs. On the 3rd night, choose a player: they become an evil Demon of your choice\r[No Demon]"));
+            minions.Add(new("Summoner", removingCharacters: ["Lord of Typhon", "Lil' Monsta"], addingTypes: new(demons: new(-1)), firstOrder: 11, firstDesc: "Summoner learns 3 bluffs", otherOrder: 22, otherDesc: "On the 3rd night, Summoner chooses a player to become a demon of their choice", desc: "You get 3 bluffs. On the 3rd night, choose a player: they become an evil Demon of your choice\r[No Demon]"));
             minions.Add(new("Vizier", firstOrder: 67, firstDesc: "At dawn, it is publicly announced that a Vizier is in play and which player it is", desc: "All players know you are the Vizier. You cannot die during the day. If good voted, you may choose to execute immediately"));
             minions.Add(new("Widow", removingCharacters: ["Heretic"], firstOrder: 22, firstDesc: "Widow sees the grimoire and chooses a player to poison. The storyteller chooses a good player to learn the Widow is in play", desc: "On your 1st night, look at the Grimoire & choose a player: they are poisoned. 1 good player knows a Widow is in play"));
             minions.Add(new("Witch", firstOrder: 30, firstDesc: "Witch chooses a player, if the chosen player nominates the following day, they die", otherOrder: 16, otherDesc: "Unless only 3 players remain, Witch chooses a player, if the chosen player nominates the following day, they die", desc: "Each night, choose a player: if they nominate tomorrow, they die. If just 3 players live, you lose this ability"));
@@ -881,6 +1074,7 @@
             for (int i = 0; i < townsfolks.Count; i++)
             {
                 Token townsfolk = townsfolks[i];
+                townsfolk.characterType = CharacterType.Townsfolk;
                 newDict.Add(townsfolk.characterName, townsfolk);
             }
             return newDict;

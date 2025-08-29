@@ -17,10 +17,16 @@ namespace DeBOTCBot
                 Console.WriteLine($"Unable to write to file at: \"{filePath}\"");
             }
         }
-        public static void WriteLog(string source, string message)
+        public static void WriteLog(string source, string message, bool error = false)
         {
+            string logType = "Debug";
+            if (error)
+            {
+                logType = "Error";
+            }
+            string timeServerString = $"[{DateTime.Now.ToLongTimeString()} {DateTime.Now.ToShortDateString()}] [{logType}  :   {source}]";
             StreamWriter writer = File.AppendText($"{infoFilePath}\\Output.log");
-            string toWrite = $"[{DateTime.Now.ToLongTimeString()} {DateTime.Now.ToShortDateString()}] [Debug  :   {source}] {message}\r\n";
+            string toWrite = $"{timeServerString} {message.Replace("\n", $"\n{timeServerString}")}\r\n";
             writer.Write(toWrite);
             writer.Close();
         }

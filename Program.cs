@@ -56,6 +56,11 @@ namespace DeBOTCBot
         public Dictionary<string, int> botcChannels = default;
         public List<string> botcHomes = default;
     }
+    public class InGameControls(DiscordMessage newControls)
+    {
+        public DiscordMessage controls = newControls;
+        public List<DiscordMessage> scriptMessages = [];
+    }
     public class ServerInfo(DiscordGuild guild)
     {
         public bool hasInfo = false;
@@ -71,8 +76,8 @@ namespace DeBOTCBot
         public DiscordMember currentStoryteller;
         public DiscordMessageBuilder controlsMessageBuilder;
         public DiscordMessageBuilder controlsInGameMessageBuilder;
-        public DiscordMessage storytellerControls;
-        public Dictionary<DiscordMember, DiscordChannel> playerDictionary;
+        public InGameControls storytellerControls;
+        public Dictionary<ulong, DiscordChannel> playerDictionary;
         public BOTCCharacters botcGame = new();
         public bool gameStarted;
         public async Task Initialize()
@@ -238,14 +243,23 @@ namespace DeBOTCBot
             }
             hasInfo = false;
         }
-        public void Log(string contents, ConsoleColor overrideColour = ConsoleColor.Gray)
+        public void Log(string contents, ConsoleColor overrideColour = ConsoleColor.Gray, bool isError = false)
         {
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.Write($"{server.Name}");
-            Console.ForegroundColor = overrideColour;
-            Console.Write($": {contents}\n");
+            string serverString = $"{server.Name}: ";
+            string[] splitLines = contents.Split("\n");
+            for (int i = 0; i < splitLines.Length; i++)
+            {
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.Write(serverString);
+                Console.ForegroundColor = overrideColour;
+                Console.Write($"{splitLines[i]}\n");
+            }
             Console.ForegroundColor = ConsoleColor.Gray;
-            Serialization.WriteLog(server.Name, contents);
+            Serialization.WriteLog(server.Name, contents, isError);
+        }
+        public void Log(Exception exception)
+        {
+            Log($"{exception.Message}\n{exception.StackTrace}", ConsoleColor.Red, true);
         }
     }
     [Command("botc")]
@@ -271,13 +285,21 @@ namespace DeBOTCBot
                     await info.Initialize();
                     response = "Successfully created BOTC environment!";
                 }
+                info.Log(response);
             }
-            catch
+            catch (Exception exception)
             {
                 response = "Something went wrong while trying to create BOTC environment!";
+                info.Log(exception);
             }
-            info.Log(response);
-            await context.EditResponseAsync(response);
+            try
+            {
+                await context.EditResponseAsync(response);
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+            }
         }
         [Command("storyteller")]
         [Description("Choose a server member to become the storyteller")]
@@ -299,26 +321,33 @@ namespace DeBOTCBot
                     response = string.Empty;
                     if (info.currentStoryteller != null)
                     {
-                        response += $"Member {info.currentStoryteller.DisplayName} is no longer the storyteller,\r";
+                        response += $"\"{info.currentStoryteller.DisplayName}\" is no longer the storyteller,\r";
                         info.Log("Deleting Storyteller Controls");
-                        await info.storytellerControls.DeleteAsync();
+                        await info.storytellerControls.controls.DeleteAsync();
                         info.storytellerControls = null;
                     }
-                    response += $"Member {member.DisplayName} is the new storyteller";
+                    response += $"\"{member.DisplayName}\" is the new storyteller";
                     await member.GrantRoleAsync(info.storytellerRole);
                     info.currentStoryteller = member;
                 }
                 else
                 {
-                    response = $"Member {member.DisplayName} was already the storyteller!";
+                    response = $"\"{member.DisplayName}\" was already the storyteller!";
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 response = "Something went wrong while choosing a storyteller!";
-                info.Log(response);
+                info.Log(exception);
             }
-            await context.EditResponseAsync(response);
+            try
+            {
+                await context.EditResponseAsync(response);
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+            }
         }
         [Command("destroy")]
         [Description("Remove BOTC channels and roles")]
@@ -340,13 +369,21 @@ namespace DeBOTCBot
                 {
                     response = "No BOTC environment was found!";
                 }
+                info.Log(response);
             }
-            catch
+            catch (Exception exception)
             {
                 response = "Something went wrong while trying to destroy BOTC environment!";
+                info.Log(exception);
             }
-            info.Log(response);
-            await context.EditResponseAsync(response);
+            try
+            {
+                await context.EditResponseAsync(response);
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+            }
         }
         [Command("save")]
         [Description("Force server data to save")]
@@ -361,13 +398,21 @@ namespace DeBOTCBot
             {
                 await DeBOTCBot.SaveServerInfo(info);
                 response = "Wrote info to file";
+                info.Log(response);
             }
-            catch
+            catch (Exception exception)
             {
                 response = "Something went wrong while saving server info!";
+                info.Log(exception);
             }
-            info.Log(response);
-            await context.EditResponseAsync(response);
+            try
+            {
+                await context.EditResponseAsync(response);
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+            }
         }
         [Command("reset")]
         [Description("Force server data to reset")]
@@ -388,14 +433,22 @@ namespace DeBOTCBot
                 else
                 {
                     response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
+                    info.Log(response);
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 response = "Something went wrong while resetting server info!";
+                info.Log(exception);
             }
-            info.Log(response);
-            await context.EditResponseAsync(response);
+            try
+            {
+                await context.EditResponseAsync(response);
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+            }
         }
         [Command("pandemonium")]
         [Description("See info about the game and its creators")]
@@ -409,12 +462,19 @@ namespace DeBOTCBot
             {
                 response = "This bot is not associated with official Blood on The Clocktower or Pandemonium Institute, please see the official website and patreon for official tools, information and to show support for the game\r[Blood on The Clocktower Website](https://bloodontheclocktower.com)\r[Blood on The Clocktower Patreon](https://www.patreon.com/botconline)";
             }
-            catch
+            catch (Exception exception)
             {
                 response = "Something went wrong while showing Pandemonium Institute information!";
-                info.Log(response);
+                info.Log(exception);
             }
-            await context.EditResponseAsync(response);
+            try
+            {
+                await context.EditResponseAsync(response);
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+            }
         }
         [Command("tokens")]
         public class TokenCommands
@@ -454,21 +514,28 @@ namespace DeBOTCBot
                     }
                     splitMessage = response.Length > 2000;
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = "Something went wrong while showing BOTC tokens!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                if (splitMessage && halfMessage > -1)
+                try
                 {
-                    await context.EditResponseAsync(response[..halfMessage]);
-                    await context.FollowupAsync(response[halfMessage..], true);
+                    if (splitMessage && halfMessage > -1)
+                    {
+                        await context.EditResponseAsync(response[..halfMessage]);
+                        await context.FollowupAsync(response[halfMessage..], true);
+                    }
+                    else
+                    {
+                        await context.EditResponseAsync(response);
+                    }
                 }
-                else
+                catch (Exception exception)
                 {
-                    await context.EditResponseAsync(response);
+                    info.Log(exception);
                 }
-                
+
             }
             [Command("description")]
             [Description("Display the description of a specific BOTC token")]
@@ -490,12 +557,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while showing the description of \"{token}\"!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
         }
         [Command("scripts")]
@@ -530,28 +604,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while displaying available scripts!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
-                //string[] scriptTokens = info.botcGame.scripts[scriptNames[i]];
-                //CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
-                //for (int j = 0; j < characterTypes.Length; j++)
-                //{
-                //    CharacterType type = characterTypes[j];
-                //    response += $"\r### {type}:\r";
-                //    List<Token> tokensOfType = [.. BOTCCharacters.allTokens.Values.Where((x) => x.characterType == type && scriptTokens.Contains(x.characterName))];
-                //    for (int k = 0; k < tokensOfType.Count; k++)
-                //    {
-                //        response += $"- {tokensOfType[k].characterName}";
-                //        if (k != tokensOfType.Count - 1)
-                //        {
-                //            response += "\r";
-                //        }
-                //    }
-                //}
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("show")]
             [Description("Display the tokens available in a script")]
@@ -577,9 +642,9 @@ namespace DeBOTCBot
                             {
                                 if (k == 0)
                                 {
-                                    response += $"\r### {type}:\r";
+                                    response += $"\r### {type}:\r- ";
                                 }
-                                response += $"- {tokensOfType[k].characterName}";
+                                response += $"{tokensOfType[k].characterName}";
                                 if (k != tokensOfType.Count - 1)
                                 {
                                     response += ", ";
@@ -593,12 +658,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while displaying the tokens of script of name {script}!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("new")]
             [Description("Add a new BOTC script")]
@@ -632,10 +704,10 @@ namespace DeBOTCBot
                             }
                         }
                         info.botcGame.scripts.Add(script, [.. tokensToAdd]);
-                        if (info.storytellerControls != null && info.gameStarted)
+                        if (info.storytellerControls != null && info.storytellerControls.controls != null && info.gameStarted)
                         {
                             DeBOTCBot.UpdateControls(info);
-                            await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
+                            await info.storytellerControls.controls.ModifyAsync(info.controlsInGameMessageBuilder);
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                         split = response.Length > 2000;
@@ -646,25 +718,32 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while adding script: \"{script}\"!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                if (split && halfway > -1)
+                try
                 {
-                    await context.EditResponseAsync(response[..halfway]);
-                    await context.FollowupAsync(response[halfway..], true);
+                    if (split && halfway > -1)
+                    {
+                        await context.EditResponseAsync(response[..halfway]);
+                        await context.FollowupAsync(response[halfway..], true);
+                    }
+                    else
+                    {
+                        await context.EditResponseAsync(response);
+                    }
                 }
-                else
+                catch (Exception exception)
                 {
-                    await context.EditResponseAsync(response);
+                    info.Log(exception);
                 }
             }
             [Command("edit")]
             [Description("Edit the specified BOTC script")]
             [RequirePermissions(DiscordPermission.ManageChannels)]
-            public static async Task BOTCScriptEditCommand(SlashCommandContext context, [Description("The existing script to edit")] string script, [Description("Tokens to add to the script (Separated by \",\")")] string add = default, [Description("Tokens to remove from the script (Separated by \",\")")] string remove = default)
+            public static async Task BOTCScriptEditCommand(SlashCommandContext context, [Description("The existing script to edit")] string script, [Description("Tokens to add to the script (Separated by \",\")")] string add = null, [Description("Tokens to remove from the script (Separated by \",\")")] string remove = null)
             {
                 ServerInfo info = DeBOTCBot.activeServers[context.Guild.Id];
                 info.Log($"Editing script with name: \"{script}\"");
@@ -677,32 +756,38 @@ namespace DeBOTCBot
                     if (info.botcGame.ScriptExists(script, out string correctedScript))
                     {
                         response = $"# {correctedScript}\r";
-                        string[] toAddArray = add.Split(",");
                         List<string> tokensToAdd = [];
-                        if (toAddArray.Length > 0)
+                        if (add != null)
                         {
-                            response += "\r## - Adding:\r";
-                            for (int i = 0; i < toAddArray.Length; i++)
+                            string[] toAddArray = add.Split(",");
+                            if (toAddArray.Length > 0)
                             {
-                                if (BOTCCharacters.TokenExists(toAddArray[i], out string newToken) && !tokensToAdd.Contains(newToken) && !info.botcGame.scripts[correctedScript].Contains(newToken))
+                                response += "\r## - Adding:\r";
+                                for (int i = 0; i < toAddArray.Length; i++)
                                 {
-                                    response += $"  - {newToken}\r";
-                                    tokensToAdd.Add(newToken);
+                                    if (BOTCCharacters.TokenExists(toAddArray[i], out string newToken) && !tokensToAdd.Contains(newToken) && !info.botcGame.scripts[correctedScript].Contains(newToken))
+                                    {
+                                        response += $"  - {newToken}\r";
+                                        tokensToAdd.Add(newToken);
+                                    }
                                 }
                             }
                         }
                         halfway = response.Length;
-                        string[] toRemoveArray = remove.Split(",");
                         List<string> tokensToRemove = [];
-                        if (toRemoveArray.Length > 0)
+                        if (remove != null)
                         {
-                            response += "\r## - Removing:\r";
-                            for (int i = 0; i < toRemoveArray.Length; i++)
+                            string[] toRemoveArray = remove.Split(",");
+                            if (toRemoveArray.Length > 0)
                             {
-                                if (BOTCCharacters.TokenExists(toRemoveArray[i], out string newToken) && !tokensToRemove.Contains(newToken) && info.botcGame.scripts[correctedScript].Contains(newToken))
+                                response += "\r## - Removing:\r";
+                                for (int i = 0; i < toRemoveArray.Length; i++)
                                 {
-                                    response += $"  - {newToken}\r";
-                                    tokensToRemove.Add(newToken);
+                                    if (BOTCCharacters.TokenExists(toRemoveArray[i], out string newToken) && !tokensToRemove.Contains(newToken) && info.botcGame.scripts[correctedScript].Contains(newToken))
+                                    {
+                                        response += $"  - {newToken}\r";
+                                        tokensToRemove.Add(newToken);
+                                    }
                                 }
                             }
                         }
@@ -719,19 +804,26 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while editing script: \"{script}\"!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                if (split && halfway > -1)
+                try
                 {
-                    await context.EditResponseAsync(response[..halfway]);
-                    await context.FollowupAsync(response[halfway..], true);
+                    if (split && halfway > -1)
+                    {
+                        await context.EditResponseAsync(response[..halfway]);
+                        await context.FollowupAsync(response[halfway..], true);
+                    }
+                    else
+                    {
+                        await context.EditResponseAsync(response);
+                    }
                 }
-                else
+                catch (Exception exception)
                 {
-                    await context.EditResponseAsync(response);
+                    info.Log(exception);
                 }
             }
             [Command("remove")]
@@ -749,10 +841,10 @@ namespace DeBOTCBot
                     {
                         info.botcGame.scripts.Remove(correctedScript);
                         response = $"Removed script: \"{correctedScript}\"";
-                        if (info.storytellerControls != null && info.gameStarted)
+                        if (info.storytellerControls != null && info.storytellerControls.controls != null && info.gameStarted)
                         {
                             DeBOTCBot.UpdateControls(info);
-                            await info.storytellerControls.ModifyAsync(info.controlsInGameMessageBuilder);
+                            await info.storytellerControls.controls.ModifyAsync(info.controlsInGameMessageBuilder);
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                     }
@@ -762,12 +854,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while removing script: \"{script}\"!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("night")]
             [Description("Show the night order for a specific script")]
@@ -791,19 +890,26 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while displaying the night order of script: \"{script}\"!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                if (split && halfway > -1)
+                try
                 {
-                    await context.EditResponseAsync(response[..halfway]);
-                    await context.FollowupAsync(response[halfway..]);
+                    if (split && halfway > -1)
+                    {
+                        await context.EditResponseAsync(response[..halfway]);
+                        await context.FollowupAsync(response[halfway..]);
+                    }
+                    else
+                    {
+                        await context.EditResponseAsync(response);
+                    }
                 }
-                else
+                catch (Exception exception)
                 {
-                    await context.EditResponseAsync(response);
+                    info.Log(exception);
                 }
             }
             [Command("roll")]
@@ -831,23 +937,30 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while rolling a grimoire using script: \"{script}\" with player count: \"{players}\"! Are there enough of each token type for this number of players?";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
-                if (responseNext != string.Empty)
+                try
                 {
-                    if (split && halfway > -1)
+                    await context.EditResponseAsync(response);
+                    if (responseNext != string.Empty)
                     {
-                        await context.FollowupAsync(responseNext[..halfway], true);
-                        await context.FollowupAsync(responseNext[halfway..], true);
+                        if (split && halfway > -1)
+                        {
+                            await context.FollowupAsync(responseNext[..halfway], true);
+                            await context.FollowupAsync(responseNext[halfway..], true);
+                        }
+                        else
+                        {
+                            await context.FollowupAsync(responseNext, true);
+                        }
                     }
-                    else
-                    {
-                        await context.FollowupAsync(responseNext, true);
-                    }
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
                 }
             }
             [Command("default")]
@@ -871,12 +984,19 @@ namespace DeBOTCBot
                         response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while setting scripts to default!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
         }
         [Command("town")]
@@ -908,22 +1028,30 @@ namespace DeBOTCBot
                     else
                     {
                         response = $"Town channels already contained a channel named \"{channel}\"!";
-                        info.Log(response);
                     }
+                    info.Log(response);
                 }
-                catch
+                catch (Exception exception)
                 {
                     if (dictAdded)
                     {
                         response = $"Successfully added new channel to list with name \"{channel}\" and voice limit {limitClamped}, but could not create the channel!";
+                        info.Log(response);
                     }
                     else
                     {
                         response = "Something went wrong while adding new town channel!";
                     }
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("remove")]
             [Description("Remove a town channel")]
@@ -955,12 +1083,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while removing channel named \"{channel}\"";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("edit")]
             [Description("Edit an existing town channel")]
@@ -1002,12 +1137,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while editing channel with name {channel} and a voice limit of {voiceLimit}!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("show")]
             [Description("Show current town channels")]
@@ -1026,12 +1168,19 @@ namespace DeBOTCBot
                         response += $"- **{channelNames[i]}**, {info.townChannels[channelNames[i]]}\r";
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while showing town channels!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("default")]
             [Description("Reset town to default")]
@@ -1075,12 +1224,19 @@ namespace DeBOTCBot
                         response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while setting town channels to default!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
         }
         [Command("homes")]
@@ -1103,12 +1259,19 @@ namespace DeBOTCBot
                         response += $"- {homeNames[i]}\r";
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while showing home names!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("add")]
             [Description("Add a new possible home name")]
@@ -1132,12 +1295,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while adding home with name {name}!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("remove")]
             [Description("Remove a possible home name")]
@@ -1160,12 +1330,19 @@ namespace DeBOTCBot
                         info.Log(response);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while removing home with name {name}!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("set")]
             [Description("Set possible home names")]
@@ -1186,12 +1363,19 @@ namespace DeBOTCBot
                     }
                     info.homeChannels = homeNamesList;
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while setting home names!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
             [Command("default")]
             [Description("Reset home names to default")]
@@ -1214,12 +1398,19 @@ namespace DeBOTCBot
                         response = "Confirm that you'd like to reset server info by setting \"confirm\" to \"true\"";
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     response = $"Something went wrong while setting home names to default!";
-                    info.Log(response);
+                    info.Log(exception);
                 }
-                await context.EditResponseAsync(response);
+                try
+                {
+                    await context.EditResponseAsync(response);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
             }
         }
     }
@@ -1285,20 +1476,20 @@ namespace DeBOTCBot
             }
             if (args.RolesAfter.Contains(info.storytellerRole))
             {
-                if (info.storytellerControls != null)
+                if (info.storytellerControls != null && info.storytellerControls.controls != null)
                 {
-                    await info.storytellerControls.DeleteAsync();
+                    await info.storytellerControls.controls.DeleteAsync();
                     info.storytellerControls = null;
                 }
                 info.currentStoryteller = args.Member;
                 UpdateControls(info);
-                info.storytellerControls = await client.SendMessageAsync(info.storytellerChannel, info.controlsMessageBuilder);
+                info.storytellerControls = new(await client.SendMessageAsync(info.storytellerChannel, info.controlsMessageBuilder));
                 info.Log($"User: {info.currentStoryteller.DisplayName} is the current Storyteller");
             }
-            else if (info.currentStoryteller == args.Member && info.storytellerControls != null)
+            else if (info.currentStoryteller == args.Member && info.storytellerControls != null && info.storytellerControls.controls != null)
             {
                 info.Log("Deleting Storyteller Controls");
-                await info.storytellerControls.DeleteAsync();
+                await info.storytellerControls.controls.DeleteAsync();
                 info.storytellerControls = null;
                 if (info.gameStarted)
                 {
@@ -1318,19 +1509,19 @@ namespace DeBOTCBot
                 options.Add(new(label, label));
             }
             DiscordSelectComponent scriptSelect = new("deB_BOTCScriptSelect", "Script", options, false);
-            DiscordUserSelectComponent userSelect = new("deB_BOTCUserSelect", "Players", false, 5, 15);
-            DiscordButtonComponent bellButton = new(DiscordButtonStyle.Primary, "deB_BOTCBellButton", "Ring the Bell!");
-            DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time!");
+            DiscordUserSelectComponent userSelect = new("deB_BOTCUserSelect", "Players", false, 1, 15);
+            DiscordButtonComponent bellButton = new(DiscordButtonStyle.Primary, "deB_BOTCBellButton", "Ring the Bell");
+            DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time");
+            DiscordButtonComponent nominateButton = new(DiscordButtonStyle.Primary, "deB_BOTCNominateButton", "Nomination");
             DiscordButtonComponent endButton = new(DiscordButtonStyle.Danger, "deB_BOTCEndButton", "End Game");
             info.controlsMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, select your players!").AddActionRowComponent(userSelect);
-            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, this is the Storyteller's Interface!")
-                .AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton).AddActionRowComponent(endButton);
+            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton).AddActionRowComponent(endButton);
         }
         public static async Task ButtonPressed(DiscordClient client, ComponentInteractionCreatedEventArgs args)
         {
             ServerInfo info = activeServers[args.Guild.Id];
-            List<DiscordMember> currentPlayers = [];
-            if (info.playerDictionary != null && info.playerDictionary.Count > 0)
+            List<ulong> currentPlayers = [];
+            if (info.playerDictionary != null)
             {
                 currentPlayers = [..info.playerDictionary.Keys];
             }
@@ -1350,10 +1541,11 @@ namespace DeBOTCBot
                                 await Task.Delay(TimeSpan.FromSeconds(10));
                                 for (int i = 0; i < currentPlayers.Count; i++)
                                 {
-                                    if (currentPlayers[i].VoiceState != null && currentPlayers[i].VoiceState.ChannelId != info.townChannel.Id)
+                                    DiscordMember member = await info.server.GetMemberAsync(currentPlayers[i]);
+                                    if (member.VoiceState != null && member.VoiceState.ChannelId != info.townChannel.Id)
                                     {
-                                        info.Log($"User: {currentPlayers[i].DisplayName} is being moved to the townhall...");
-                                        await currentPlayers[i].PlaceInAsync(info.townChannel);
+                                        info.Log($"User: {member.DisplayName} is being moved to the townhall...");
+                                        await member.PlaceInAsync(info.townChannel);
                                     }
                                 }
                                 info.Log("Bell Ring Completed");
@@ -1369,10 +1561,11 @@ namespace DeBOTCBot
                                 for (int i = 0; i < currentPlayers.Count; i++)
                                 {
                                     DiscordChannel home = info.playerDictionary[currentPlayers[i]];
-                                    if (currentPlayers[i].VoiceState != null && currentPlayers[i].VoiceState.ChannelId != home.Id)
+                                    DiscordMember member = await info.server.GetMemberAsync(currentPlayers[i]);
+                                    if (member.VoiceState != null && member.VoiceState.ChannelId != home.Id)
                                     {
-                                        info.Log($"User: {currentPlayers[i].DisplayName} is being moved to {home.Name}...");
-                                        await currentPlayers[i].PlaceInAsync(home);
+                                        info.Log($"User: {member.DisplayName} is being moved to {home.Name}...");
+                                        await member.PlaceInAsync(home);
                                     }
                                 }
                                 info.Log("Home Time Completed!");
@@ -1383,8 +1576,9 @@ namespace DeBOTCBot
                         {
                             if (!info.gameStarted)
                             {
-                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new(info.controlsInGameMessageBuilder));
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                                 info.Log($"Users Selected: \"{args.Interaction.Data.Resolved.Users.Count}\"");
+                                await args.Message.ModifyAsync(new DiscordMessageBuilder(info.controlsInGameMessageBuilder));
                                 await StartGame(info, client, new(args.Interaction.Data.Resolved.Users.Keys));
                                 info.gameStarted = true;
                             }
@@ -1405,36 +1599,119 @@ namespace DeBOTCBot
                         }
                     case "deB_BOTCScriptSelect":
                         {
-                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new(info.controlsInGameMessageBuilder));
                             string script = args.Values.Single();
                             string tokensString;
                             string orderString = string.Empty;
                             bool split = false;
                             int halfway = -1;
+                            for (int i = 0; i < info.storytellerControls.scriptMessages.Count; i++)
+                            {
+                                try
+                                {
+                                    await info.storytellerControls.scriptMessages[i].DeleteAsync();
+                                }
+                                catch (Exception exception)
+                                {
+                                    info.Log(exception);
+                                }
+                                finally
+                                {
+                                    info.storytellerControls.scriptMessages.RemoveAt(i);
+                                    i--;
+                                }
+                            }
                             try
                             {
                                 string[] scriptTokens = info.botcGame.scripts[script];
                                 tokensString = GenerateTokenMessage(info, scriptTokens, currentPlayers.Count);
                                 orderString = $"\r{GenerateNightOrderMessage(scriptTokens, out split, out halfway)}";
                             }
-                            catch
+                            catch (Exception exception)
                             {
                                 tokensString = "Something went wrong while generating a grimoire! Are there enough of each token type for this number of players?";
-                                info.Log(tokensString);
+                                info.Log(exception);
                             }
                             DiscordMessage message = await client.SendMessageAsync(info.storytellerChannel, tokensString);
+                            info.storytellerControls.scriptMessages.Add(message);
                             if (orderString != string.Empty)
                             {
                                 if (split && halfway > -1)
                                 {
                                     message = await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[..halfway]).WithReply(message.Id));
-                                    await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[halfway..]).WithReply(message.Id));
+                                    info.storytellerControls.scriptMessages.Add(message);
+                                    info.storytellerControls.scriptMessages.Add(await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[halfway..]).WithReply(message.Id)));
                                 }
                                 else
                                 {
-                                    await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString).WithReply(message.Id));
+                                    info.storytellerControls.scriptMessages.Add(await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString).WithReply(message.Id)));
                                 }
                             }
+                            break;
+                        }
+                    case "deB_BOTCNominateButton":
+                        {
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            IEnumerable<DiscordMember> players = currentPlayers.Select(async (x) => await info.server.GetMemberAsync(x)).Select((x) => x.Result).Append(info.currentStoryteller);
+                            IEnumerable<DiscordSelectComponentOption> nominatables = players.Select((x) => new DiscordSelectComponentOption(x.DisplayName, x.Id.ToString()));
+                            DiscordSelectComponent nominatorSelect = new("deB_BOTCNominatorSelect", "Nominator", nominatables, false);
+                            DiscordSelectComponent nomineeSelect = new("deB_BOTCNomineeSelect", "Nominee", nominatables, false);
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder().WithContent("Pick a player to nominate another player!").AddActionRowComponent(nominatorSelect).AddActionRowComponent(nomineeSelect).AsEphemeral());
+                            break;
+                        }
+                    case "deB_BOTCNominatorSelect":
+                        {
+                            bool nomMade = false;
+                            ulong selectedID = ulong.Parse(args.Values.Single());
+                            Player player = info.botcGame.playerSeats.Where((x) => x.memberID == selectedID).Single();
+                            if (info.botcGame.currentNomination != null)
+                            {
+                                info.botcGame.currentNomination.nominator = player;
+                                if (info.botcGame.currentNomination.nominee != null)
+                                {
+                                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Danger, "deB_BOTCBeginVote", "Begin Vote")));
+                                    nomMade = true;
+                                }
+                            }
+                            else
+                            {
+                                info.botcGame.currentNomination = new(player, true);
+                            }
+                            if (!nomMade)
+                            {
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            }
+                            break;
+                        }
+                    case "deB_BOTCNomineeSelect":
+                        {
+                            bool nomMade = false;
+                            ulong selectedID = ulong.Parse(args.Values.Single());
+                            Player player = info.botcGame.playerSeats.Where((x) => x.memberID == selectedID).Single();
+                            if (info.botcGame.currentNomination != null)
+                            {
+                                info.botcGame.currentNomination.nominee = player;
+                                if (info.botcGame.currentNomination.nominator != null)
+                                {
+                                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Danger, "deB_BOTCBeginVote", "Begin Vote")));
+                                    nomMade = true;
+                                }
+                            }
+                            else
+                            {
+                                info.botcGame.currentNomination = new(player, false);
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            }
+                            if (!nomMade)
+                            {
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            }
+                            break;
+                        }
+                    case "deB_BOTCBeginVote":
+                        {
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            await BeginVote(info, client);
                             break;
                         }
                     default:
@@ -1447,19 +1724,43 @@ namespace DeBOTCBot
             }
             else
             {
-                info.Log($"Button Pressed by non-storyteller!: \"{args.Id}\"");
-                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                switch (args.Id)
+                {
+                    case "":
+                        {
+                            break;
+                        }
+                    default:
+                        {
+                            info.Log($"Button Pressed by non-storyteller!: \"{args.Id}\"");
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            break;
+                        }
+                }
             }
+        }
+        public static async Task BeginVote(ServerInfo info, DiscordClient client)
+        {
+
         }
         public static async Task StartGame(ServerInfo info, DiscordClient client, List<ulong> ids)
         {
             info.Log("Starting BOTC Game");
             info.playerDictionary = [];
             List<DiscordMember> currentPlayers = [];
+            List<string> testNames = ["Bill", "Bob", "Jack", "Jill", "Harry", "Hannah", "xXxLeanBeefxXx", "Cocktower", "Harold", "Jessica", "Emma", "Willy", "Jaqueline", "Jason", "Sean"];
+            for (int i = 0; i < 5; i++)
+            {
+                int randomIndex = Random.Shared.Next(0, testNames.Count);
+                info.botcGame.playerSeats.Add(new((ulong)i, testNames[randomIndex]));
+                testNames.RemoveAt(randomIndex);
+            }
             for (int i = 0; i < ids.Count; i++)
             {
-                DiscordMember member = await info.server.GetMemberAsync(ids[i]);
+                ulong id = ids[i];
+                DiscordMember member = await info.server.GetMemberAsync(id);
                 currentPlayers.Add(member);
+                //info.botcGame.playerSeats.Add(new(id, member.DisplayName));
             }
             for (int i = 0; i < currentPlayers.Count - 1; ++i)
             {
@@ -1476,7 +1777,7 @@ namespace DeBOTCBot
                 int randomIndex = Random.Shared.Next(channelNames.Count);
                 DiscordChannel newHome = await info.server.CreateChannelAsync(channelNames[randomIndex], DiscordChannelType.Voice, info.homesCategory, overwrites: [new DiscordOverwriteBuilder(currentPlayers[i]) { Allowed = DiscordPermission.ViewChannel }]);
                 channelNames.RemoveAt(randomIndex);
-                info.playerDictionary.Add(currentPlayers[i], newHome);
+                info.playerDictionary.Add(currentPlayers[i].Id, newHome);
                 await currentPlayers[i].GrantRoleAsync(info.genericPlayerRole);
             }
             await info.genericPlayerRole.ModifyPositionAsync(0);
@@ -1487,17 +1788,20 @@ namespace DeBOTCBot
                 await client.SendMessageAsync(channels[i], $"---STARTING GAME---");
             }
         }
-        public static async Task EndGame(ServerInfo info, DiscordClient client, List<DiscordMember> currentPlayers)
+        public static async Task EndGame(ServerInfo info, DiscordClient client, List<ulong> currentPlayers)
         {
             info.Log("Ending BOTC Game");
             for (int i = 0; i < currentPlayers.Count; i++)
             {
-                await currentPlayers[i].ModifyAsync(delegate (MemberEditModel model) { model.VoiceChannel = null; });
-                await currentPlayers[i].RevokeRoleAsync(info.genericPlayerRole);
+                DiscordMember member = await info.server.GetMemberAsync(currentPlayers[i]);
+                await member.ModifyAsync(delegate (MemberEditModel model) { model.VoiceChannel = null; });
+                await member.RevokeRoleAsync(info.genericPlayerRole);
                 await info.playerDictionary[currentPlayers[i]].DeleteAsync();
             }
             currentPlayers.Clear();
             info.playerDictionary.Clear();
+            info.botcGame.playerSeats.Clear();
+            info.botcGame.currentNomination = null;
             await info.currentStoryteller.RevokeRoleAsync(info.storytellerRole);
             info.currentStoryteller = null;
             info.gameStarted = false;
@@ -1538,10 +1842,26 @@ namespace DeBOTCBot
                 players = Math.Clamp(players, 5, 15);
                 playerCountChange = true;
             }
-            string[] tokens = info.botcGame.RollTokens([..finalScript.Distinct()], players);
-            for (int i = 0; i < tokens.Length; i++)
+            List<Token> tokens = info.botcGame.RollTokens([..finalScript.Distinct()], players, out bool monsta);
+            if (monsta)
             {
-                finalString += $"- **{BOTCCharacters.allTokens[tokens[i]].characterType}**: {tokens[i]}\r";
+                finalString += "**Demon**: Lil' Monsta\r";
+            }
+            if (info.botcGame.playerSeats.Count == 0)
+            {
+                string[] tokenNames = [..tokens.Select((x) => x.characterName)];
+                for (int i = 0; i < tokenNames.Length; i++)
+                {
+                    finalString += $"**{BOTCCharacters.allTokens[tokenNames[i]].characterType}**: {tokenNames[i]}\r";
+                }
+            }
+            else
+            {
+                for (int i = 0; i < info.botcGame.playerSeats.Count; i++)
+                {
+                    Player player = info.botcGame.playerSeats[i];
+                    finalString += $"**Seat {i}, {player.name} | {player.token.characterType}**: {player.token.characterName}\r";
+                }
             }
             if (playerCountChange)
             {
@@ -1552,7 +1872,11 @@ namespace DeBOTCBot
         public static string GenerateNightOrderMessage(string[] scriptNames, out bool split, out int half)
         {
             string finalString = "## Night 0 Order:\r";
-            List<Token> scriptTokens = [.. BOTCCharacters.allTokens.Values.Where((x) => scriptNames.Contains(x.characterName) && x.nightOrder != (-1, -1))];
+            List<Token> scriptTokens = [..BOTCCharacters.allTokens.Values.Where((x) => scriptNames.Contains(x.characterName) && x.nightOrder != (-1, -1))];
+            scriptTokens.AddRange([
+                new("Minion Info", firstOrder: 8, firstDesc: "If the game has 7 or more players, Minions learn who other Minions are and who Demon is"),
+                new("Demon Info", firstOrder: 12, firstDesc: "If the game has 7 or more players, Demon learns who the Minions are and learns 3 not-in-play characters from the script")
+                ]);
             scriptTokens.Sort((x, y) => x.nightOrder.Item1.CompareTo(y.nightOrder.Item1));
             for (int i = 0; i < scriptTokens.Count; i++)
             {
@@ -1561,7 +1885,7 @@ namespace DeBOTCBot
                 {
                     continue;
                 }
-                finalString += $"### {token.characterName}\r{token.orderFirstDescription}\r";
+                finalString += $"- **{token.characterName}**: {token.orderFirstDescription}\r";
             }
             half = finalString.Length;
             finalString += "\r## Other Nights Order:\r";
@@ -1573,10 +1897,30 @@ namespace DeBOTCBot
                 {
                     continue;
                 }
-                finalString += $"### {token.characterName}\r{token.orderOtherDescription}\r";
+                finalString += $"- **{token.characterName}**: {token.orderOtherDescription}\r";
             }
             split = finalString.Length > 2000;
             return finalString;
+        }
+        public static int Iterate(int count, int index, bool clock = true)
+        {
+            if (clock)
+            {
+                index++;
+            }
+            else
+            {
+                index--;
+            }
+            if (index >= count)
+            {
+                index = 0;
+            }
+            else if (index < 0)
+            {
+                index = count - 1;
+            }
+            return index;
         }
     }
 }

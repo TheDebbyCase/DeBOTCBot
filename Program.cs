@@ -1430,7 +1430,15 @@ namespace DeBOTCBot
             }
             Serialization.ResetDebugLog();
             DiscordClientBuilder builder = DiscordClientBuilder.CreateDefault(token, Intents);
-            builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated).HandleGuildDownloadCompleted(BotReady).HandleComponentInteractionCreated(ButtonPressed)).UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) }).UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands), 1396921797160472576); });
+            builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated)
+            .HandleGuildDownloadCompleted(BotReady)
+            .HandleComponentInteractionCreated(ButtonPressed)
+            .HandleMessageDeleted(MessageDeleted)
+            .HandleChannelDeleted(ChannelDeleted)
+            .HandleGuildRoleDeleted(RoleDeleted)
+            .HandleGuildMemberRemoved(MemberLeft))
+            .UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) })
+            .UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands), 1396921797160472576); });
             DiscordClient client = builder.Build();
             await client.ConnectAsync(new DiscordActivity("Blood on The Clocktower", DiscordActivityType.Playing), DiscordUserStatus.Online);
             await Task.Delay(-1);
@@ -1496,26 +1504,6 @@ namespace DeBOTCBot
                     await EndGame(info, client, [..info.playerDictionary.Keys]);
                 }
             }
-        }
-        public static void UpdateControls(ServerInfo info)
-        {
-            List<DiscordSelectComponentOption> options = [];
-            Dictionary<string, string[]> scriptDict = info.botcGame.scripts;
-            string[] scripts = [.. scriptDict.Keys];
-            for (int i = 0; i < scripts.Length; i++)
-            {
-                string label = scripts[i];
-                info.Log($"Adding \"{scripts[i]}\" to available scripts!");
-                options.Add(new(label, label));
-            }
-            DiscordSelectComponent scriptSelect = new("deB_BOTCScriptSelect", "Script", options, false);
-            DiscordUserSelectComponent userSelect = new("deB_BOTCUserSelect", "Players", false, 1, 15);
-            DiscordButtonComponent bellButton = new(DiscordButtonStyle.Primary, "deB_BOTCBellButton", "Ring the Bell");
-            DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time");
-            DiscordButtonComponent nominateButton = new(DiscordButtonStyle.Primary, "deB_BOTCNominateButton", "Nomination");
-            DiscordButtonComponent endButton = new(DiscordButtonStyle.Danger, "deB_BOTCEndButton", "End Game");
-            info.controlsMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, select your players!").AddActionRowComponent(userSelect);
-            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton).AddActionRowComponent(endButton);
         }
         public static async Task ButtonPressed(DiscordClient client, ComponentInteractionCreatedEventArgs args)
         {
@@ -1739,6 +1727,42 @@ namespace DeBOTCBot
                 }
             }
         }
+        public static async Task MessageDeleted(DiscordClient client, MessageDeletedEventArgs args)
+        {
+            ServerInfo info = activeServers[args.Guild.Id];
+        }
+        public static async Task ChannelDeleted(DiscordClient client, ChannelDeletedEventArgs args)
+        {
+            ServerInfo info = activeServers[args.Guild.Id];
+        }
+        public static async Task RoleDeleted(DiscordClient client, GuildRoleDeletedEventArgs args)
+        {
+            ServerInfo info = activeServers[args.Guild.Id];
+        }
+        public static async Task MemberLeft(DiscordClient client, GuildMemberRemovedEventArgs args)
+        {
+            ServerInfo info = activeServers[args.Guild.Id];
+        }
+        public static void UpdateControls(ServerInfo info)
+        {
+            List<DiscordSelectComponentOption> options = [];
+            Dictionary<string, string[]> scriptDict = info.botcGame.scripts;
+            string[] scripts = [.. scriptDict.Keys];
+            for (int i = 0; i < scripts.Length; i++)
+            {
+                string label = scripts[i];
+                info.Log($"Adding \"{scripts[i]}\" to available scripts!");
+                options.Add(new(label, label));
+            }
+            DiscordSelectComponent scriptSelect = new("deB_BOTCScriptSelect", "Script", options, false);
+            DiscordUserSelectComponent userSelect = new("deB_BOTCUserSelect", "Players", false, 1, 15);
+            DiscordButtonComponent bellButton = new(DiscordButtonStyle.Primary, "deB_BOTCBellButton", "Ring the Bell");
+            DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time");
+            DiscordButtonComponent nominateButton = new(DiscordButtonStyle.Primary, "deB_BOTCNominateButton", "Nomination");
+            DiscordButtonComponent endButton = new(DiscordButtonStyle.Danger, "deB_BOTCEndButton", "End Game");
+            info.controlsMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, select your players!").AddActionRowComponent(userSelect);
+            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton).AddActionRowComponent(endButton);
+        }
         public static async Task BeginVote(ServerInfo info, DiscordClient client)
         {
 
@@ -1748,6 +1772,7 @@ namespace DeBOTCBot
             info.Log("Starting BOTC Game");
             info.playerDictionary = [];
             List<DiscordMember> currentPlayers = [];
+            //temp
             List<string> testNames = ["Bill", "Bob", "Jack", "Jill", "Harry", "Hannah", "xXxLeanBeefxXx", "Cocktower", "Harold", "Jessica", "Emma", "Willy", "Jaqueline", "Jason", "Sean"];
             for (int i = 0; i < 5; i++)
             {
@@ -1755,6 +1780,7 @@ namespace DeBOTCBot
                 info.botcGame.playerSeats.Add(new((ulong)i, testNames[randomIndex]));
                 testNames.RemoveAt(randomIndex);
             }
+            //temp
             for (int i = 0; i < ids.Count; i++)
             {
                 ulong id = ids[i];

@@ -1144,8 +1144,7 @@ namespace DeBOTCBot
                         info.botcGame.scripts.Add(script, [.. tokensToAdd]);
                         if (info.storytellerControls != null && info.gameStarted)
                         {
-                            DeBOTCBot.UpdateControls(info);
-                            await info.EditMessage(info.storytellerControls.controls, info.controlsInGameMessageBuilder);
+                            await info.EditMessage(info.storytellerControls.controls, await DeBOTCBot.UpdateControls(info, true));
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                         split = response.Length > 2000;
@@ -1281,8 +1280,7 @@ namespace DeBOTCBot
                         response = $"Removed script: \"{correctedScript}\"";
                         if (info.storytellerControls != null && info.storytellerControls.controls != 0 && info.gameStarted)
                         {
-                            DeBOTCBot.UpdateControls(info);
-                            await info.EditMessage(info.storytellerControls.controls, info.controlsInGameMessageBuilder);
+                            await info.EditMessage(info.storytellerControls.controls, await DeBOTCBot.UpdateControls(info, true));
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                     }
@@ -1939,11 +1937,10 @@ namespace DeBOTCBot
                     info.storytellerControls = null;
                 }
                 info.currentStoryteller = member.Id;
-                UpdateControls(info);
                 DiscordChannel storytellerChannel = await info.GetChannel(info.storytellerChannel);
                 if (storytellerChannel != null)
                 {
-                    info.storytellerControls = new(await info.NewMessage(storytellerChannel, info.controlsMessageBuilder));
+                    info.storytellerControls = new(await info.NewMessage(storytellerChannel, await UpdateControls(info, false)));
                     info.Log($"User: {member.DisplayName} is the current Storyteller");
                 }
             }
@@ -1956,7 +1953,7 @@ namespace DeBOTCBot
                     await info.DeleteMessage(controls);
                 }
                 info.storytellerControls = null;
-                await EndGame(info, client, [..info.playerDictionary.Keys]);
+                await EndGame(info, [..info.playerDictionary.Keys]);
             }
         }
         public static async Task ButtonPressed(DiscordClient client, ComponentInteractionCreatedEventArgs args)
@@ -2025,9 +2022,8 @@ namespace DeBOTCBot
                             if (!info.gameStarted)
                             {
                                 info.Log($"Users Selected: \"{args.Interaction.Data.Resolved.Users.Count}\"");
-                                UpdateControls(info, true);
-                                await info.EditMessage(args.Message, new DiscordMessageBuilder(info.controlsInGameMessageBuilder));
-                                await StartGame(info, client, new(args.Interaction.Data.Resolved.Users.Keys));
+                                await info.EditMessage(args.Message, new DiscordMessageBuilder(await UpdateControls(info, true, true)));
+                                await StartGame(info, new(args.Interaction.Data.Resolved.Users.Keys));
                                 info.gameStarted = true;
                             }
                             break;
@@ -2037,7 +2033,7 @@ namespace DeBOTCBot
                             await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate, new(info.controlsMessageBuilder));
                             if (info.gameStarted)
                             {
-                                await EndGame(info, client, currentPlayers);
+                                await EndGame(info, currentPlayers);
                             }
                             break;
                         }
@@ -2121,7 +2117,7 @@ namespace DeBOTCBot
                             }
                             else
                             {
-                            info.voteMessage = await info.NewMessage(info.townChannel, UpdateVoteMessage(info, initial: true));
+                            info.voteMessage = await info.NewMessage(info.townChannel, await UpdateVoteMessage(info, initial: true));
                         }
                             break;
                         }
@@ -2150,7 +2146,7 @@ namespace DeBOTCBot
                             }
                             else
                             {
-                                info.voteMessage = await info.NewMessage(info.townChannel, UpdateVoteMessage(info, initial: true));
+                                info.voteMessage = await info.NewMessage(info.townChannel, await UpdateVoteMessage(info, initial: true));
                             }
                             break;
                         }
@@ -2160,11 +2156,11 @@ namespace DeBOTCBot
                             {
                                 await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().WithContent("Vote Began").AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Danger, "deB_BOTCCancelVote", "Cancel Vote")));
                                 DiscordMessage voteMessage = await info.GetMessage(info.voteMessage);
-                                await info.EditMessage(voteMessage, UpdateVoteMessage(info));
+                                await info.EditMessage(voteMessage, await UpdateVoteMessage(info));
                                 info.voteCancelToken = new();
                                 int votes = -1;
                                 List<Player> toReverse = [];
-                                votes = await BeginVote(info, client, info.voteCancelToken.Token);
+                                votes = await BeginVote(info, info.voteCancelToken.Token);
                                 if (!info.voteCancelToken.IsCancellationRequested)
                                 {
                                     info.voteCancelToken.Cancel();
@@ -2226,6 +2222,30 @@ namespace DeBOTCBot
                             }
                             break;
                         }
+                    case "deB_BOTCBansheeToggle":
+                        {
+                            IEnumerable<ulong> chosenIDs = args.Interaction.Data.Resolved.Users.Keys;
+                            Player chosenPlayer = info.botcGame.playerSeats.Where((x) => chosenIDs.Contains(x.memberID)).SingleOrDefault();
+                            if (info.gameStarted && chosenPlayer != null)
+                            {
+                                string response = $"{chosenPlayer.name} now has ";
+                                chosenPlayer.banshee = !chosenPlayer.banshee;
+                                if (chosenPlayer.banshee)
+                                {
+                                    response += "the activated banshee ability!";
+                                }
+                                else
+                                {
+                                    response += "no banshee ability!";
+                                }
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder().WithContent(response).AsEphemeral());
+                            }
+                            else
+                            {
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            }
+                            break;
+                        }
                     default:
                         {
                             info.Log("Invalid button press!");
@@ -2241,20 +2261,20 @@ namespace DeBOTCBot
                 await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                 if ((pressingPlayer != null && buttonID == pressingPlayer.seat) || /*temp*/presserMember.Id == info.currentStoryteller)
                 {
-                    await info.EditMessage(args.Message, UpdateVoteMessage(info, buttonID, info.botcGame.playerSeats.Where((x) => x.buttonDisabled).Select((x) => x.seat)));
+                    await info.EditMessage(args.Message, await UpdateVoteMessage(info, buttonID, info.botcGame.playerSeats.Where((x) => x.buttonDisabled).Select((x) => x.seat)));
                 }
             }
             else
             {
                 info.Log($"Button Pressed by non-storyteller!: \"{args.Id}\"");
-                if (args.Interaction.ResponseState == DiscordInteractionResponseState.Unacknowledged)
-                {
-                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
-                }
             }
             if (args.Interaction.ResponseState == DiscordInteractionResponseState.Replied)
             {
                 info.RegisterMessage(await args.Interaction.GetOriginalResponseAsync());
+            }
+            else if (args.Interaction.ResponseState == DiscordInteractionResponseState.Unacknowledged)
+            {
+                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
             }
         }
         public static async Task LeftServer(DiscordClient client, GuildDeletedEventArgs args)
@@ -2271,7 +2291,7 @@ namespace DeBOTCBot
             info.messages.Remove(id);
             if (info.storytellerControls.controls == id)
             {
-                await EndGame(info, client, [..info.playerDictionary.Keys]);
+                await EndGame(info, [..info.playerDictionary.Keys]);
             }
         }
         public static async Task ChannelDeleted(DiscordClient client, ChannelDeletedEventArgs args)
@@ -2279,7 +2299,7 @@ namespace DeBOTCBot
             ServerInfo info = activeServers[args.Guild.Id];
             if (info.channels.Remove(args.Channel.Id))
             {
-                await EndGame(info, client, [..info.playerDictionary.Keys]);
+                await EndGame(info, [..info.playerDictionary.Keys]);
             }
         }
         public static async Task RoleDeleted(DiscordClient client, GuildRoleDeletedEventArgs args)
@@ -2287,7 +2307,7 @@ namespace DeBOTCBot
             ServerInfo info = activeServers[args.Guild.Id];
             if (info.roles.Remove(args.Role.Id))
             {
-                await EndGame(info, client, [..info.playerDictionary.Keys]);
+                await EndGame(info, [..info.playerDictionary.Keys]);
             }
         }
         public static async Task MemberLeft(DiscordClient client, GuildMemberRemovedEventArgs args)
@@ -2295,47 +2315,51 @@ namespace DeBOTCBot
             ServerInfo info = activeServers[args.Guild.Id];
             if (info.members.Remove(args.Member.Id))
             {
-                await EndGame(info, client, [..info.playerDictionary.Keys]);
+                await EndGame(info, [..info.playerDictionary.Keys]);
             }
         }
-        public static async void UpdateControls(ServerInfo info, bool initial = false)
+        public static async Task<DiscordMessageBuilder> UpdateControls(ServerInfo info, bool ingame, bool initial = false)
         {
-            List<DiscordSelectComponentOption> options = [];
-            Dictionary<string, string[]> scriptDict = info.botcGame.scripts;
-            string[] scripts = [.. scriptDict.Keys];
-            for (int i = 0; i < scripts.Length; i++)
+            DiscordMessageBuilder builder;
+            if (ingame)
             {
-                string label = scripts[i];
-                options.Add(new(label, label));
+                DiscordUserSelectComponent userSelect = new("deB_BOTCUserSelect", "Players", false, 1, 15);
+                builder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(await info.GetMember(info.currentStoryteller))}, select your players!").AddActionRowComponent(userSelect);
             }
-            DiscordSelectComponent scriptSelect = new("deB_BOTCScriptSelect", "Script", options, false);
-            DiscordUserSelectComponent userSelect = new("deB_BOTCUserSelect", "Players", false, 1, 15);
-            DiscordButtonComponent bellButton = new(DiscordButtonStyle.Primary, "deB_BOTCBellButton", "Ring the Bell");
-            DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time");
-            DiscordButtonComponent nominateButton = new(DiscordButtonStyle.Primary, "deB_BOTCNominateButton", "Nomination");
-            DiscordButtonComponent endButton = new(DiscordButtonStyle.Danger, "deB_BOTCEndButton", "End Game");
-            DiscordUserSelectComponent lifeToggleSelect = new("deB_BOTCLifeToggle", "Player", false, 1, 1);
-            if (initial)
+            else
             {
-                scriptSelect.Disable();
-                bellButton.Disable();
-                homeButton.Disable();
-                nominateButton.Disable();
-                endButton.Disable();
-                lifeToggleSelect.Disable();
+                List<DiscordSelectComponentOption> options = [];
+                Dictionary<string, string[]> scriptDict = info.botcGame.scripts;
+                string[] scripts = [.. scriptDict.Keys];
+                for (int i = 0; i < scripts.Length; i++)
+                {
+                    string label = scripts[i];
+                    options.Add(new(label, label));
+                }
+                DiscordSelectComponent scriptSelect = new("deB_BOTCScriptSelect", "Script", options, false);
+                DiscordButtonComponent bellButton = new(DiscordButtonStyle.Primary, "deB_BOTCBellButton", "Ring the Bell");
+                DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time");
+                DiscordButtonComponent nominateButton = new(DiscordButtonStyle.Primary, "deB_BOTCNominateButton", "Nomination");
+                DiscordButtonComponent endButton = new(DiscordButtonStyle.Danger, "deB_BOTCEndButton", "End Game");
+                DiscordUserSelectComponent lifeToggleSelect = new("deB_BOTCLifeToggle", "Player", false, 1, 1);
+                DiscordUserSelectComponent bansheeToggleSelect = new("deB_BOTCBansheeToggle", "Banshee Toggle", false, 1, 1);
+                if (initial)
+                {
+                    scriptSelect.Disable();
+                    bellButton.Disable();
+                    homeButton.Disable();
+                    nominateButton.Disable();
+                    endButton.Disable();
+                    lifeToggleSelect.Disable();
+                    bansheeToggleSelect.Disable();
+                }
+                builder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(await info.GetMember(info.currentStoryteller))}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton, endButton).AddActionRowComponent(lifeToggleSelect).AddActionRowComponent(bansheeToggleSelect);
             }
-            info.controlsMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(await info.GetMember(info.currentStoryteller))}, select your players!").AddActionRowComponent(userSelect);
-            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(await info.GetMember(info.currentStoryteller))}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton, endButton).AddActionRowComponent(lifeToggleSelect);
+            return builder;
         }
-        public static DiscordMessageBuilder UpdateVoteMessage(ServerInfo info, int votesChanged = -1, IEnumerable<int> disabled = null, bool initial = false)
+        public static async Task<DiscordMessageBuilder> UpdateVoteMessage(ServerInfo info, int votesChanged = -1, IEnumerable<int> disabled = null, bool initial = false)
         {
             disabled ??= [];
-            bool banshee = false;
-            if (votesChanged >= 0)
-            {
-                info.Log($"Banshee Check");
-                banshee = info.botcGame.playerSeats[votesChanged].token == BOTCCharacters.allTokens["Banshee"];
-            }
             List<DiscordButtonComponent> voteButtons = [];
             int playerCount = info.botcGame.playerSeats.Count;
             for (int i = 0; i < playerCount; i++)
@@ -2350,7 +2374,7 @@ namespace DeBOTCBot
                     info.Log($"Changing {player.name}'s vote");
                     if (!disable)
                     {
-                        if (banshee)
+                        if (info.botcGame.playerSeats[votesChanged].banshee)
                         {
                             if (player.secondHandRaised)
                             {
@@ -2416,7 +2440,7 @@ namespace DeBOTCBot
                 actionRows.Add(new(newButtons));
                 rowsLeft -= 1;
             }
-            DiscordMessageBuilder builder = new DiscordMessageBuilder().EnableV2Components().AddTextDisplayComponent($"{Formatter.Mention(info.roles[info.genericPlayerRole])}, {info.botcGame.currentNomination.nominator.mentionString} is nominating {info.botcGame.currentNomination.nominee.mentionString}, cast your vote!");
+            DiscordMessageBuilder builder = new DiscordMessageBuilder().EnableV2Components().AddTextDisplayComponent($"{Formatter.Mention(await info.GetRole(info.genericPlayerRole))}, {info.botcGame.currentNomination.nominator.mentionString} is nominating {info.botcGame.currentNomination.nominee.mentionString}, cast your vote!");
             for (int i = 0; i < actionRows.Count; i++)
             {
                 builder.AddActionRowComponent(actionRows[i]);
@@ -2456,7 +2480,7 @@ namespace DeBOTCBot
             }
             await info.DeleteMessage(id);
         }
-        public static async Task<int> BeginVote(ServerInfo info, DiscordClient client, CancellationToken cancel)
+        public static async Task<int> BeginVote(ServerInfo info, CancellationToken cancel)
         {
             int timePer = 4;
             List<Player> votesRemoved = [];
@@ -2468,7 +2492,7 @@ namespace DeBOTCBot
                 for (int i = 0; i < info.botcGame.playerSeats.Count; i++)
                 {
                     Player player = info.botcGame.playerSeats[i];
-                    if (!player.dead)
+                    if (!player.dead || player.banshee)
                     {
                         player.hasVote = true;
                     }
@@ -2489,7 +2513,7 @@ namespace DeBOTCBot
                     disabled.Add(voter);
                     if (player.hasVote)
                     {
-                        await info.EditMessage(info.voteMessage, UpdateVoteMessage(info, voter, disabled));
+                        await info.EditMessage(info.voteMessage, await UpdateVoteMessage(info, voter, disabled));
                         if (player.handRaised)
                         {
                             info.Log($"{player.name} voted");
@@ -2500,7 +2524,7 @@ namespace DeBOTCBot
                                 totalVotes++;
                             }
                         }
-                        if (player.dead)
+                        if (player.dead && !player.banshee)
                         {
                             info.Log($"Removing dead player {player.name}'s vote");
                             player.hasVote = false;
@@ -2521,7 +2545,7 @@ namespace DeBOTCBot
             }
             return totalVotes;
         }
-        public static async Task StartGame(ServerInfo info, DiscordClient client, List<ulong> ids)
+        public static async Task StartGame(ServerInfo info, List<ulong> ids)
         {
             info.Log("Starting BOTC Game");
             info.playerDictionary = [];
@@ -2571,13 +2595,12 @@ namespace DeBOTCBot
             {
                 await info.NewMessage(channels[i], $"---STARTING GAME---");
             }
-            UpdateControls(info);
             if (info.storytellerControls != null)
             {
-                await info.EditMessage(info.storytellerControls.controls, info.controlsInGameMessageBuilder);
+                await info.EditMessage(info.storytellerControls.controls, await UpdateControls(info, true));
             }
         }
-        public static async Task EndGame(ServerInfo info, DiscordClient client, List<ulong> currentPlayers)
+        public static async Task EndGame(ServerInfo info, List<ulong> currentPlayers)
         {
             if (!info.gameStarted)
             {

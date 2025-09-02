@@ -81,6 +81,7 @@
         public int totalPlayers;
         public int seat;
         public Token token;
+        public bool banshee = false;
         public (int, int) neighbours;
         public bool dead = false;
         public bool handRaised = false;

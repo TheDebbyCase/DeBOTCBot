@@ -73,14 +73,20 @@
             orderOtherDescription = otherDesc;
         }
     }
-    public class Player(ulong id, string displayName)
+    public class Player(ulong id, string displayName, string mention)
     {
         public string name = displayName;
+        public string mentionString = mention;
         public ulong memberID = id;
         public int totalPlayers;
         public int seat;
         public Token token;
         public (int, int) neighbours;
+        public bool dead = false;
+        public bool handRaised = false;
+        public bool secondHandRaised = false;
+        public bool buttonDisabled = false;
+        public bool hasVote = true;
         public bool swapSafe = false;
         public void SetData(int index, Token character, int count)
         {
@@ -130,9 +136,9 @@
             {
                 info = newInfo;
             }
-            info?.Log("Making default BOTC scripts");
             if (scripts == null || (scripts != null && scripts.Count == 0))
             {
+                info?.Log("Making default BOTC scripts");
                 scripts = [];
                 scripts.Add("Trouble Brewing", ["Imp", "Baron", "Scarlet Woman", "Spy", "Poisoner", "Saint", "Recluse", "Drunk", "Butler", "Mayor", "Soldier", "Slayer", "Virgin", "Ravenkeeper", "Monk", "Undertaker", "Fortune Teller", "Empath", "Chef", "Investigator", "Librarian", "Washerwoman"]);
                 scripts.Add("Sects & Violets", ["Vortox", "No Dashii", "Vigormortis", "Fang Gu", "Pit-Hag", "Cerenovus", "Witch", "Evil Twin", "Klutz", "Barber", "Sweetheart", "Mutant", "Sage", "Juggler", "Artist", "Philosopher", "Seamstress", "Savant", "Oracle", "Town Crier", "Flowergirl", "Mathematician", "Snake Charmer", "Dreamer", "Clockmaker"]);
@@ -1142,7 +1148,7 @@
             List<string> scriptNames = [..scripts.Keys];
             for (int i = 0; i < scriptNames.Count; i++)
             {
-                result = DeBOTCBot.IsSimilar(checkingScript, scriptNames[i]);
+                result = DeBOTCBot.AreSimilar(checkingScript, scriptNames[i]);
                 if (result)
                 {
                     exactScript = scriptNames[i];
@@ -1167,7 +1173,7 @@
             List<string> tokenNames = [..allTokens.Keys];
             for (int i = 0; i < tokenNames.Count; i++)
             {
-                result = DeBOTCBot.IsSimilar(checkingToken, tokenNames[i]);
+                result = DeBOTCBot.AreSimilar(checkingToken, tokenNames[i]);
                 if (result)
                 {
                     exactToken = tokenNames[i];

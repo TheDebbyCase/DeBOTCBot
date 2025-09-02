@@ -12,24 +12,6 @@ Suggestions can also be made directly to me if you can find me on Discord, or on
 If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebbycase)!
 
 - ## Limitations
- 
-	<details>
-	<summary>Seating</summary>
- 
-	Currently no game implementation for the seating arrangement of players, nothing planned at the moment  
- 
-	This must be done using the main website  
-	
-	</details>
- 
-	<details>
-	<summary>Nomination Phase</summary>
- 
-	Currently no game implementation for the nomination phase, nothing planned at the moment  
-	
-	This must be done using the main website  
-	
-	</details>
 
 	<details>
 	<summary>Travellers</summary>
@@ -286,7 +268,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 
 - ## Storyteller Controls  
 
-	Storyteller controls are only created once a member has been given the storyteller role  
+	Storyteller controls are only created once a member has been given the storyteller role (either by directly giving it or using the provided command)  
 
 	<details>
 	<summary>Pre-game</summary>
@@ -304,12 +286,31 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	<details>
 	<summary>In-game</summary>
 							
-	Has access to a selection menu where the storyteller can select any available script with which to generate a grimoire using the number of players selected previously, and a night order  
+	Has access to a selection menu where the storyteller can select any available script with which to generate a grimoire using the number of players selected previously, with a night order and seating arrangements  
 	
 	Has access to a button which the storyteller can press to notify players they have 10 seconds to go back to the Town Square channel. After the elapsed time, players will be forced into the channel  
 	
 	Has access to a button which the storyteller can press to send each player to their assigned home channel  
+ 
+	Has access to a button which the storyteller can press to begin a new nomination  
 	
 	Has access to a button which the storyteller can press to "end" the game, removing all home channels, removing the storyteller controls, removing the Storyteller and the BOTC Player roles from all members, and sending a message in every BOTC created channel to timestamp the end of the game  
+ 
+	Has access to a selection menu where the storyteller can select any player and flip them from dead to alive, or vice versa (Currently no visual indication of player's current state)  
+
+	</details>
+
+	<details>
+	<summary>Nominations</summary>
+							
+	Upon the first button press, a new message is created with two inputs to select the Nominator and the Nominee, respectively  
+ 
+	Once both selections have been filled, two new messages will be sent. One for the Storyteller which holds a button reading "Begin Vote", and the other, in the Town Channel, a currently disabled array of buttons each labelled with a different seat, this is the voting message  
+ 
+	Upon "Begin Vote" being pressed by the Storyteller, the voting message is enabled and every 4 seconds a new button will be disabled (beginning with the clockwise neighbour of the nominee), the Storyteller also gains a "Cancel Vote" button, which will cancel the ongoing nomination  
+ 
+	At any point, until their button is disabled, a player can press their corresponding button to flip their vote from thumbs down to hand up, or vice versa  
+ 
+	Once all buttons have been disabled, a final vote tally is posted
 
 	</details>

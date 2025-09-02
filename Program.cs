@@ -8,41 +8,28 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using System.ComponentModel;
 using DSharpPlus.Commands.ContextChecks;
+using DSharpPlus.Exceptions;
+using System.Diagnostics;
 namespace DeBOTCBot
 {
+    public enum LogType
+    {
+        Info,
+        Surpressed,
+        Error
+    }
     public class ServerSaveInfo
     {
         public ServerSaveInfo() { }
         public ServerSaveInfo(ServerInfo info)
         {
-            if (info.storytellerRole != null)
-            {
-                storytellerRoleID = info.storytellerRole.Id;
-            }
-            if (info.genericPlayerRole != null)
-            {
-                genericPlayerRoleID = info.genericPlayerRole.Id;
-            }
-            if (info.announcementsChannel != null)
-            {
-                announcementsChannelID = info.announcementsChannel.Id;
-            }
-            if (info.storytellerChannel != null)
-            {
-                storytellerChannelID = info.storytellerChannel.Id;
-            }
-            if (info.townChannel != null)
-            {
-                townChannelID = info.townChannel.Id;
-            }
-            if (info.homesCategory != null)
-            {
-                homesCategoryID = info.homesCategory.Id;
-            }
-            if (info.botcGame != null && info.botcGame.scripts != null)
-            {
-                botcScripts = info.botcGame.scripts;
-            }
+            storytellerRoleID = info.storytellerRole;
+            genericPlayerRoleID = info.genericPlayerRole;
+            announcementsChannelID = info.announcementsChannel;
+            storytellerChannelID = info.storytellerChannel;
+            townChannelID = info.townChannel;
+            homesCategoryID = info.homesCategory;
+            botcScripts = info.botcGame.scripts;
             botcChannels = info.townChannels;
             botcHomes = info.homeChannels;
         }
@@ -56,114 +43,121 @@ namespace DeBOTCBot
         public Dictionary<string, int> botcChannels = default;
         public List<string> botcHomes = default;
     }
-    public class InGameControls(DiscordMessage newControls)
-    {
-        public DiscordMessage controls = newControls;
-        public List<DiscordMessage> scriptMessages = [];
-    }
+    
     public class ServerInfo(DiscordGuild guild)
     {
+        public class InGameControls(ulong newControls)
+        {
+            public ulong controls = newControls;
+            public List<ulong> scriptMessages = [];
+        }
+        public readonly static Type[] surpressedExceptions = [typeof(NotFoundException), typeof(OperationCanceledException), typeof(TaskCanceledException)];
+        public Dictionary<ulong, DiscordMessage> messages = [];
+        public Dictionary<ulong, DiscordChannel> channels = [];
+        public Dictionary<ulong, DiscordRole> roles = [];
+        public Dictionary<ulong, DiscordMember> members = [];
         public bool hasInfo = false;
         public DiscordGuild server = guild;
-        public DiscordRole storytellerRole;
-        public DiscordRole genericPlayerRole;
-        public DiscordChannel announcementsChannel;
-        public DiscordChannel storytellerChannel;
-        public DiscordChannel townChannel;
+        public ulong storytellerRole;
+        public ulong genericPlayerRole;
+        public ulong announcementsChannel;
+        public ulong storytellerChannel;
+        public ulong townChannel;
         public Dictionary<string, int> townChannels = [];
         public List<string> homeChannels;
-        public DiscordChannel homesCategory;
-        public DiscordMember currentStoryteller;
+        public ulong homesCategory;
+        public ulong currentStoryteller;
         public DiscordMessageBuilder controlsMessageBuilder;
         public DiscordMessageBuilder controlsInGameMessageBuilder;
+        public ulong voteMessage;
         public InGameControls storytellerControls;
-        public Dictionary<ulong, DiscordChannel> playerDictionary;
+        public Dictionary<ulong, ulong> playerDictionary;
         public BOTCCharacters botcGame = new();
         public bool gameStarted;
+        public CancellationTokenSource voteCancelToken;
         public async Task Initialize()
         {
             await Destroy(true);
             DiscordPermissions storytellerPerms = new(DiscordPermission.ViewChannel, DiscordPermission.SendMessages, DiscordPermission.Connect, DiscordPermission.Speak, DiscordPermission.MuteMembers, DiscordPermission.DeafenMembers, DiscordPermission.MoveMembers, DiscordPermission.PrioritySpeaker);
             Log("Creating Storyteller role");
-            storytellerRole = await server.CreateRoleAsync("Storyteller", color: DiscordColor.Goldenrod, hoist: true, mentionable: true);
+            storytellerRole = await NewRole("Storyteller", color: DiscordColor.Goldenrod, hoist: true, mentionable: true);
             Log("Creating BOTC Player role");
-            genericPlayerRole = await server.CreateRoleAsync("BOTC Player");
+            genericPlayerRole = await NewRole("BOTC Player");
             Log("Creating Storyteller channels");
-            DiscordChannel storytellerCategory = await server.CreateChannelAsync("Storyteller's Corner", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(storytellerRole) { Allowed = storytellerPerms }]);
-            announcementsChannel = await server.CreateChannelAsync("botc-announcements", DiscordChannelType.Text, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = DiscordPermission.SendMessages }]);
-            await server.CreateChannelAsync("Watchtower", DiscordChannelType.Voice, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(genericPlayerRole) { Denied = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }]);
-            storytellerChannel = await server.CreateChannelAsync("Storyteller's Crypt", DiscordChannelType.Voice, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(storytellerRole) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(genericPlayerRole) { Denied = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
+            ulong storytellerCategory = await NewChannel("Storyteller's Corner", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(roles[storytellerRole]) { Allowed = storytellerPerms }]);
+            announcementsChannel = await NewChannel("botc-announcements", DiscordChannelType.Text, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = DiscordPermission.SendMessages }]);
+            await NewChannel("Watchtower", DiscordChannelType.Voice, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(roles[genericPlayerRole]) { Denied = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }]);
+            storytellerChannel = await NewChannel("Storyteller's Crypt", DiscordChannelType.Voice, storytellerCategory, overwrites: [new DiscordOverwriteBuilder(roles[storytellerRole]) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(roles[genericPlayerRole]) { Denied = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
             Log("Creating Town channels");
-            DiscordChannel townCategory = await server.CreateChannelAsync("Town", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(storytellerRole) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(genericPlayerRole) { Allowed = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
-            townChannel = await server.CreateChannelAsync("Town Square", DiscordChannelType.Voice, townCategory, userLimit: 0);
+            ulong townCategory = await NewChannel("Town", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(roles[storytellerRole]) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(roles[genericPlayerRole]) { Allowed = new DiscordPermissions(DiscordPermission.ViewChannel, DiscordPermission.Connect) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
+            townChannel = await NewChannel("Town Square", DiscordChannelType.Voice, townCategory, userLimit: 0);
             if (townChannels == null || (townChannels != null && townChannels.Count == 0))
             {
                 townChannels = DeBOTCBot.DefaultTownData();
             }
             foreach (KeyValuePair<string, int> pair in townChannels)
             {
-                await server.CreateChannelAsync(pair.Key, DiscordChannelType.Voice, townCategory, userLimit: pair.Value);
+                await NewChannel(pair.Key, DiscordChannelType.Voice, townCategory, userLimit: pair.Value);
             }
             Log("Creating Homes category");
-            homesCategory = await server.CreateChannelAsync("Homes", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(storytellerRole) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(genericPlayerRole) { Allowed = new DiscordPermissions(DiscordPermission.SendMessages, DiscordPermission.Connect), Denied = new DiscordPermissions(DiscordPermission.ViewChannel) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
+            homesCategory = await NewChannel("Homes", DiscordChannelType.Category, overwrites: [new DiscordOverwriteBuilder(roles[storytellerRole]) { Allowed = storytellerPerms }, new DiscordOverwriteBuilder(roles[genericPlayerRole]) { Allowed = new DiscordPermissions(DiscordPermission.SendMessages, DiscordPermission.Connect), Denied = new DiscordPermissions(DiscordPermission.ViewChannel) }, new DiscordOverwriteBuilder(server.EveryoneRole) { Allowed = DiscordPermission.ViewChannel, Denied = new DiscordPermissions(DiscordPermission.Connect, DiscordPermission.SendMessages) }]);
             await DeBOTCBot.SaveServerInfo(DeBOTCBot.activeServers[server.Id]);
             hasInfo = true;
         }
         public async Task FillSavedValues(ServerSaveInfo savedInfo)
         {
-            if (server.Roles.ContainsKey(savedInfo.storytellerRoleID))
+            List<DiscordChannel> parentChannels = [];
+            DiscordRole role = await GetRole(savedInfo.storytellerRoleID);
+            if (role != null)
             {
-                storytellerRole = await server.GetRoleAsync(savedInfo.storytellerRoleID);
+                storytellerRole = role.Id;
+                RegisterRole(role);
             }
-            else
+            role = await GetRole(savedInfo.genericPlayerRoleID);
+            if (role != null)
             {
-                storytellerRole = default;
-                Log($"No storyteller role was found!");
+                genericPlayerRole = role.Id;
+                RegisterRole(role);
             }
-            if (server.Roles.ContainsKey(savedInfo.genericPlayerRoleID))
+            DiscordChannel channel = await GetChannel(savedInfo.announcementsChannelID);
+            if (channel != null)
             {
-                genericPlayerRole = await server.GetRoleAsync(savedInfo.genericPlayerRoleID);
+                announcementsChannel = channel.Id;
             }
-            else
+            channel = await GetChannel(savedInfo.storytellerChannelID);
+            if (channel != null)
             {
-                genericPlayerRole = default;
-                Log($"No generic player role was found!");
+                storytellerChannel = channel.Id;
+                if (channel.Parent != null)
+                {
+                    parentChannels.Add(channel.Parent);
+                }
             }
-            if (server.Channels.ContainsKey(savedInfo.announcementsChannelID))
+            channel = await GetChannel(savedInfo.townChannelID);
+            if (channel != null)
             {
-                announcementsChannel = await server.GetChannelAsync(savedInfo.announcementsChannelID);
+                townChannel = channel.Id;
+                if (channel.Parent != null)
+                {
+                    parentChannels.Add(channel.Parent);
+                }
             }
-            else
+            channel = await GetChannel(savedInfo.homesCategoryID);
+            if (channel != null)
             {
-                announcementsChannel = default;
-                Log($"No announcements channel was found!");
+                homesCategory = channel.Id;
+                parentChannels.Add(channel);
             }
-            if (server.Channels.ContainsKey(savedInfo.storytellerChannelID))
+            List<DiscordChannel> existingChannels = [];
+            for (int i = 0; i < parentChannels.Count; i++)
             {
-                storytellerChannel = await server.GetChannelAsync(savedInfo.storytellerChannelID);
+                DiscordChannel nextChannel = parentChannels[i];
+                existingChannels.Add(nextChannel);
+                existingChannels.AddRange(nextChannel.Children);
             }
-            else
+            for (int i = 0; i < existingChannels.Count; i++)
             {
-                storytellerChannel = default;
-                Log($"No storyteller channel was found!");
-            }
-            if (server.Channels.ContainsKey(savedInfo.townChannelID))
-            {
-                townChannel = await server.GetChannelAsync(savedInfo.townChannelID);
-            }
-            else
-            {
-                townChannel = default;
-                Log($"No town channel was found!");
-            }
-            if (server.Channels.ContainsKey(savedInfo.homesCategoryID))
-            {
-                homesCategory = await server.GetChannelAsync(savedInfo.homesCategoryID);
-            }
-            else
-            {
-                homesCategory = default;
-                Log($"No homes category was found!");
+                RegisterChannel(existingChannels[i]);
             }
             botcGame.scripts = savedInfo.botcScripts;
             botcGame.Initialize(this);
@@ -177,89 +171,526 @@ namespace DeBOTCBot
             {
                 homeChannels = DeBOTCBot.DefaultHomeData();
             }
-            hasInfo = storytellerRole != null || genericPlayerRole != null || announcementsChannel != null || storytellerChannel != null || townChannel != null || homesCategory != null;
+            hasInfo = storytellerRole != 0 || genericPlayerRole != 0 || announcementsChannel != 0 || storytellerChannel != 0 || townChannel != 0 || homesCategory != 0;
         }
         public async Task Destroy(bool refresh = false)
         {
             Log("Destroying BOTC channels");
             gameStarted = false;
             playerDictionary?.Clear();
-            currentStoryteller = null;
+            botcGame.currentNomination = null;
+            botcGame.playerSeats?.Clear();
+            currentStoryteller = 0;
             storytellerControls = null;
             controlsMessageBuilder = null;
             controlsInGameMessageBuilder = null;
-            DiscordChannel storytellerCategory = storytellerChannel?.Parent;
-            storytellerChannel = null;
-            DiscordChannel townCategory = townChannel?.Parent;
-            townChannel = null;
-            List<DiscordChannel> childChannels = [];
-            if (storytellerCategory != null)
+            voteMessage = 0;
+            ulong storytellerCategory = 0;
+            if (channels.TryGetValue(storytellerChannel, out DiscordChannel storytellerChannelRef) && storytellerChannelRef.Parent != null)
             {
-                childChannels.AddRange([..storytellerCategory.Children]);
+                storytellerCategory = storytellerChannelRef.Parent.Id;
             }
-            if (townCategory != null)
+            storytellerChannel = 0;
+            ulong townCategory = 0;
+            if (channels.TryGetValue(townChannel, out DiscordChannel townChannelRef) && townChannelRef.Parent != null)
             {
-                childChannels.AddRange([..townCategory.Children]);
+                townCategory = townChannelRef.Parent.Id;
             }
-            if (homesCategory != null)
+            townChannel = 0;
+            List<ulong> childChannels = [];
+            if (storytellerCategory != 0)
             {
-                childChannels.AddRange([..homesCategory.Children]);
+                childChannels.AddRange([..channels[storytellerCategory].Children.Select((x) => x.Id)]);
+            }
+            if (townCategory != 0)
+            {
+                childChannels.AddRange([..channels[townCategory].Children.Select((x) => x.Id)]);
+            }
+            if (homesCategory != 0)
+            {
+                childChannels.AddRange([..channels[homesCategory].Children.Select((x) => x.Id)]);
             }
             for (int i = 0; i < childChannels.Count; i++)
             {
-                DiscordChannel channel = childChannels[i];
-                if (channel != null)
-                {
-                    await channel.DeleteAsync();
-                }
+                await DeleteChannel(childChannels[i]);
             }
-            if (homesCategory != null)
+            if (homesCategory != 0)
             {
-                await homesCategory.DeleteAsync();
-                homesCategory = null;
+                await DeleteChannel(homesCategory);
             }
-            if (townCategory != null)
+            homesCategory = 0;
+            if (townCategory != 0)
             {
-                await townCategory.DeleteAsync();
+                await DeleteChannel(townCategory);
             }
-            if (storytellerCategory != null)
+            if (storytellerCategory != 0)
             {
-                await storytellerCategory.DeleteAsync();
+                await DeleteChannel(storytellerCategory);
             }
             Log("Destroying BOTC roles");
-            if (genericPlayerRole != null)
+            if (genericPlayerRole != 0)
             {
-                await genericPlayerRole.DeleteAsync();
-                genericPlayerRole = null;
+                await DeleteRole(genericPlayerRole);
             }
-            if (storytellerRole != null)
+            genericPlayerRole = 0;
+            if (storytellerRole != 0)
             {
-                await storytellerRole.DeleteAsync();
-                storytellerRole = null;
+                await DeleteRole(storytellerRole);
             }
+            storytellerRole = 0;
             if (!refresh)
             {
                 await DeBOTCBot.SaveServerInfo(this);
             }
             hasInfo = false;
         }
-        public void Log(string contents, ConsoleColor overrideColour = ConsoleColor.Gray, bool isError = false)
+        public void Log(string contents, ConsoleColor overrideColour = ConsoleColor.Gray, LogType type = LogType.Info)
         {
-            string serverString = $"{server.Name}: ";
-            string[] splitLines = contents.Split("\n");
-            for (int i = 0; i < splitLines.Length; i++)
+            if (type != LogType.Surpressed)
             {
-                Console.ForegroundColor = ConsoleColor.Magenta;
-                Console.Write(serverString);
-                Console.ForegroundColor = overrideColour;
-                Console.Write($"{splitLines[i]}\n");
+                string serverString = $"{server.Name}: ";
+                string[] splitLines = contents.Split("\n");
+                for (int i = 0; i < splitLines.Length; i++)
+                {
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.Write(serverString);
+                    Console.ForegroundColor = overrideColour;
+                    Console.Write($"{splitLines[i]}\n");
+                }
+                Console.ForegroundColor = ConsoleColor.Gray;
             }
-            Console.ForegroundColor = ConsoleColor.Gray;
-            Serialization.WriteLog(server.Name, contents, isError);
+            Serialization.WriteLog(server.Name, contents, type);
         }
         public void Log(Exception exception)
         {
-            Log($"{exception.Message}\n{exception.StackTrace}", ConsoleColor.Red, true);
+            Type exceptionType = exception.GetType();
+            if (surpressedExceptions.Contains(exceptionType))
+            {
+                string exceptionName = exceptionType.ToString().Split('.').Last();
+                Log($"Surpressed {exceptionName}", type: LogType.Surpressed);
+                return;
+            }
+            Log($"{exception.GetType()}, {exception.Message}\n{exception.StackTrace}", ConsoleColor.Red, LogType.Error);
+        }
+        public async Task<ulong> NewMessage(DiscordChannel channel, DiscordMessageBuilder builder)
+        {
+            ulong id = 0;
+            try
+            {
+                DiscordMessage message = await channel.SendMessageAsync(builder);
+                id = message.Id;
+                messages.Add(id, message);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return id;
+        }
+        public async Task<ulong> NewMessage(DiscordChannel channel, string content)
+        {
+            return await NewMessage(channel, new DiscordMessageBuilder().WithContent(content));
+        }
+        public async Task<ulong> NewMessage(ulong channelID, string content)
+        {
+            return await NewMessage(channelID, new DiscordMessageBuilder().WithContent(content));
+        }
+        public async Task<ulong> NewMessage(ulong channelID, DiscordMessageBuilder builder)
+        {
+            if (!channels.TryGetValue(channelID, out DiscordChannel channel))
+            {
+                return 0;
+            }
+            return await NewMessage(channel, builder);
+        }
+        public bool RegisterMessage(DiscordMessage message)
+        {
+            return messages.TryAdd(message.Id, message);
+        }
+        public async Task<bool> RegisterMessage(ulong id)
+        {
+            return RegisterMessage(await GetMessage(id));
+        }
+        public async Task<bool> DeleteMessage(ulong id)
+        {
+            if (!messages.TryGetValue(id, out DiscordMessage message))
+            {
+                return false;
+            }
+            bool success = true;
+            try
+            {
+                await message.DeleteAsync();
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                success = false;
+            }
+            finally
+            {
+                messages.Remove(id);
+            }
+            return success;
+        }
+        public async Task<bool> DeleteMessage(DiscordMessage message)
+        {
+            return await DeleteMessage(message.Id);
+        }
+        public async Task<ulong> NewChannel(string name, DiscordChannelType type, DiscordChannel parent = null, Optional<string> topic = default, int? userLimit = null, IEnumerable<DiscordOverwriteBuilder> overwrites = null)
+        {
+            ulong id = 0;
+            try
+            {
+                DiscordChannel channel = await server.CreateChannelAsync(name, type, parent, topic, userLimit: userLimit, overwrites: overwrites);
+                id = channel.Id;
+                channels.Add(id, channel);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return id;
+        }
+        public async Task<ulong> NewChannel(string name, DiscordChannelType type, ulong parentID, Optional<string> topic = default, int? userLimit = null, IEnumerable<DiscordOverwriteBuilder> overwrites = null)
+        {
+            if (!channels.TryGetValue(parentID, out DiscordChannel parent))
+            {
+                return 0;
+            }
+            return await NewChannel(name, type, parent, topic, userLimit, overwrites);
+        }
+        public async Task<bool> DeleteChannel(ulong id)
+        {
+            if (!channels.TryGetValue(id, out DiscordChannel channel))
+            {
+                return false;
+            }
+            bool success = true;
+            try
+            {
+                await channel.DeleteAsync();
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                success = false;
+            }
+            finally
+            {
+                channels.Remove(id);
+            }
+            return success;
+        }
+        public async Task<bool> DeleteChannel(DiscordChannel channel)
+        {
+            return await DeleteChannel(channel.Id);
+        }
+        public async Task<ulong> NewRole(string name, DiscordPermissions? permissions = null, DiscordColor? color = null, bool hoist = false, bool mentionable = false)
+        {
+            ulong id = 0;
+            try
+            {
+                DiscordRole role = await server.CreateRoleAsync(name, permissions, color, hoist, mentionable);
+                id = role.Id;
+                roles.Add(id, role);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return id;
+        }
+        public async Task<bool> DeleteRole(ulong id)
+        {
+            if (!roles.TryGetValue(id, out DiscordRole role))
+            {
+                return false;
+            }
+            bool success = true;
+            try
+            {
+                await role.DeleteAsync();
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                success = false;
+            }
+            finally
+            {
+                roles.Remove(id);
+            }
+            return success;
+        }
+        public async Task<bool> DeleteRole(DiscordRole role)
+        {
+            return await DeleteRole(role.Id);
+        }
+        public bool RegisterChannel(DiscordChannel channel)
+        {
+            return channels.TryAdd(channel.Id, channel);
+        }
+        public async Task<bool> RegisterChannel(ulong id)
+        {
+            return RegisterChannel(await server.GetChannelAsync(id));
+        }
+        public bool RegisterRole(DiscordRole role)
+        {
+            return roles.TryAdd(role.Id, role);
+        }
+        public async Task<bool> RegisterRole(ulong id)
+        {
+            return RegisterRole(await server.GetRoleAsync(id));
+        }
+        public ulong RegisterMember(DiscordMember member)
+        {
+            ulong id = member.Id;
+            members.Add(id, member);
+            return id;
+        }
+        public async Task<ulong> RegisterMember(ulong id)
+        {
+            return RegisterMember(await server.GetMemberAsync(id));
+        }
+        public bool UnregisterMember(DiscordMember member)
+        {
+            return members.Remove(member.Id);
+        }
+        public async Task<bool> UnregisterMember(ulong id)
+        {
+            return UnregisterMember(await server.GetMemberAsync(id));
+        }
+        public async Task<DiscordMessage> GetMessage(ulong id, DiscordChannel channel)
+        {
+            DiscordMessage message = null;
+            try
+            {
+                message = await channel.GetMessageAsync(id);
+                messages.TryAdd(id, message);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                messages.Remove(id);
+            }
+            return message;
+        }
+        public async Task<DiscordMessage> GetMessage(ulong id, ulong channelID = 0)
+        {
+            if (!messages.TryGetValue(id, out DiscordMessage message))
+            {
+                DiscordChannel channel = await GetChannel(channelID);
+                if (channel != null)
+                {
+                    message = await GetMessage(id, channel);
+                }
+            }
+            return message;
+        }
+        public async Task<DiscordChannel> GetChannel(ulong id)
+        {
+            DiscordChannel channel = null;
+            try
+            {
+                channel = await server.GetChannelAsync(id);
+                channels.TryAdd(id, channel);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                channels.Remove(id);
+            }
+            return channel;
+        }
+        public async Task<DiscordRole> GetRole(ulong id)
+        {
+            DiscordRole role = null;
+            try
+            {
+                role = await server.GetRoleAsync(id);
+                roles.TryAdd(id, role);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                roles.Remove(id);
+            }
+            return role;
+        }
+        public async Task<DiscordMember> GetMember(ulong id)
+        {
+            DiscordMember member = null;
+            try
+            {
+                member = await server.GetMemberAsync(id);
+                members.TryAdd(id, member);
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+                members.Remove(id);
+            }
+            return member;
+        }
+        public async Task<bool> EditMessage(DiscordMessage message, DiscordMessageBuilder builder)
+        {
+            bool success = false;
+            try
+            {
+                await message.ModifyAsync(builder);
+                success = true;
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return success;
+        }
+        public async Task<bool> EditMessage(ulong id, DiscordMessageBuilder builder)
+        {
+            return await EditMessage(await GetMessage(id), builder);
+        }
+        public async Task<bool> EditMessage(DiscordMessage message, string content)
+        {
+            return await EditMessage(message, new DiscordMessageBuilder().WithContent(content));
+        }
+        public async Task<bool> EditMessage(ulong id, string content)
+        {
+            return await EditMessage(await GetMessage(id), content);
+        }
+        public async Task<bool> EditChannel(DiscordChannel channel, Action<ChannelEditModel> action)
+        {
+            bool success = false;
+            try
+            {
+                await channel.ModifyAsync(action);
+                success = true;
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return success;
+        }
+        public async Task<bool> EditChannel(ulong id, Action<ChannelEditModel> action)
+        {
+            return await EditChannel(await GetChannel(id), action);
+        }
+        public async Task<bool> GiveRole(DiscordMember member, DiscordRole role)
+        {
+            bool success = false;
+            try
+            {
+                await member.GrantRoleAsync(role);
+                success = true;
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return success;
+        }
+        public async Task<bool> GiveRole(DiscordMember member, ulong roleID)
+        {
+            return await GiveRole(member, await GetRole(roleID));
+        }
+        public async Task<bool> GiveRole(ulong memberID, DiscordRole role)
+        {
+            return await GiveRole(await GetMember(memberID), role);
+        }
+        public async Task<bool> GiveRole(ulong memberID, ulong roleID)
+        {
+            return await GiveRole(await GetMember(memberID), await GetRole(roleID));
+        }
+        public async Task<bool> TakeRole(DiscordMember member, DiscordRole role)
+        {
+            bool success = false;
+            try
+            {
+                await member.RevokeRoleAsync(role);
+                success = true;
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return success;
+        }
+        public async Task<bool> TakeRole(DiscordMember member, ulong roleID)
+        {
+            return await TakeRole(member, await GetRole(roleID));
+        }
+        public async Task<bool> TakeRole(ulong memberID, DiscordRole role)
+        {
+            return await TakeRole(await GetMember(memberID), role);
+        }
+        public async Task<bool> TakeRole(ulong memberID, ulong roleID)
+        {
+            return await TakeRole(await GetMember(memberID), await GetRole(roleID));
+        }
+        public async Task<bool> EditMember(DiscordMember member, Action<MemberEditModel> action)
+        {
+            bool success = false;
+            try
+            {
+                await member.ModifyAsync(action);
+                success = true;
+            }
+            catch (Exception exception)
+            {
+                Log(exception);
+            }
+            return success;
+        }
+        public async Task<bool> EditMember(ulong id, Action<MemberEditModel> action)
+        {
+            return await EditMember(await GetMember(id), action);
+        }
+    }
+    [Command("app")]
+    public class AppCommands
+    {
+        [Command("end")]
+        [Description("Ends the session")]
+        [RequireApplicationOwner]
+        public static async Task EndCommand(SlashCommandContext context)
+        {
+            ServerInfo debugServerInfo = DeBOTCBot.activeServers[1396921797160472576];
+            await context.DeferResponseAsync(true);
+            bool end = false;
+            try
+            {
+                if (debugServerInfo.hasInfo)
+                {
+                    await debugServerInfo.Destroy();
+                    end = true;
+                }
+            }
+            catch (Exception exception)
+            {
+                debugServerInfo.Log(exception);
+            }
+            try
+            {
+                string response = "Command for Debug Server use only!";
+                if (context.Guild.Id == 1396921797160472576)
+                {
+                    response = "Success!";
+                }
+                await context.RespondRegistered(debugServerInfo, response);
+            }
+            catch (Exception exception)
+            {
+                debugServerInfo.Log(exception);
+            }
+            finally
+            {
+                if (end)
+                {
+                    Environment.Exit(1);
+                }
+            }
         }
     }
     [Command("botc")]
@@ -294,7 +725,7 @@ namespace DeBOTCBot
             }
             try
             {
-                await context.EditResponseAsync(response);
+                await context.RespondRegistered(info, response);
             }
             catch (Exception exception)
             {
@@ -312,23 +743,30 @@ namespace DeBOTCBot
             string response;
             try
             {
-                if (!info.hasInfo)
+                DiscordRole role = await info.GetRole(info.storytellerRole);
+                if (!info.hasInfo || role == null)
                 {
-                    response = "BOTC environment does not exist!";
+                    response = "Invalid BOTC environment!";
                 }
-                else if (info.currentStoryteller != member)
+                else if (info.currentStoryteller != member.Id)
                 {
                     response = string.Empty;
-                    if (info.currentStoryteller != null)
+                    if (info.currentStoryteller != 0)
                     {
-                        response += $"\"{info.currentStoryteller.DisplayName}\" is no longer the storyteller,\r";
+                        DiscordMember storyteller = await info.GetMember(info.currentStoryteller);
+                        response += $"\"{storyteller.DisplayName}\" is no longer the storyteller,\r";
+                        await info.TakeRole(storyteller, role);
                         info.Log("Deleting Storyteller Controls");
-                        await info.storytellerControls.controls.DeleteAsync();
+                        await info.DeleteMessage(info.storytellerControls.controls);
+                        for (int i = 0; i < info.storytellerControls.scriptMessages.Count; i++)
+                        {
+                            await info.DeleteMessage(info.storytellerControls.scriptMessages[i]);
+                        }
                         info.storytellerControls = null;
                     }
                     response += $"\"{member.DisplayName}\" is the new storyteller";
-                    await member.GrantRoleAsync(info.storytellerRole);
-                    info.currentStoryteller = member;
+                    await info.GiveRole(member, role);
+                    info.currentStoryteller = (await info.GetMember(member.Id)).Id;
                 }
                 else
                 {
@@ -342,7 +780,7 @@ namespace DeBOTCBot
             }
             try
             {
-                await context.EditResponseAsync(response);
+                await context.RespondRegistered(info, response);
             }
             catch (Exception exception)
             {
@@ -378,7 +816,7 @@ namespace DeBOTCBot
             }
             try
             {
-                await context.EditResponseAsync(response);
+                await context.RespondRegistered(info, response);
             }
             catch (Exception exception)
             {
@@ -407,7 +845,7 @@ namespace DeBOTCBot
             }
             try
             {
-                await context.EditResponseAsync(response);
+                await context.RespondRegistered(info, response);
             }
             catch (Exception exception)
             {
@@ -443,7 +881,7 @@ namespace DeBOTCBot
             }
             try
             {
-                await context.EditResponseAsync(response);
+                await context.RespondRegistered(info, response);
             }
             catch (Exception exception)
             {
@@ -469,7 +907,7 @@ namespace DeBOTCBot
             }
             try
             {
-                await context.EditResponseAsync(response);
+                await context.RespondRegistered(info, response);
             }
             catch (Exception exception)
             {
@@ -523,12 +961,12 @@ namespace DeBOTCBot
                 {
                     if (splitMessage && halfMessage > -1)
                     {
-                        await context.EditResponseAsync(response[..halfMessage]);
-                        await context.FollowupAsync(response[halfMessage..], true);
+                        await context.RespondRegistered(info, response[..halfMessage]);
+                        await context.FollowupRegistered(info, response[halfMessage..], true);
                     }
                     else
                     {
-                        await context.EditResponseAsync(response);
+                        await context.RespondRegistered(info, response);
                     }
                 }
                 catch (Exception exception)
@@ -564,7 +1002,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -611,7 +1049,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -665,7 +1103,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -704,10 +1142,10 @@ namespace DeBOTCBot
                             }
                         }
                         info.botcGame.scripts.Add(script, [.. tokensToAdd]);
-                        if (info.storytellerControls != null && info.storytellerControls.controls != null && info.gameStarted)
+                        if (info.storytellerControls != null && info.gameStarted)
                         {
                             DeBOTCBot.UpdateControls(info);
-                            await info.storytellerControls.controls.ModifyAsync(info.controlsInGameMessageBuilder);
+                            await info.EditMessage(info.storytellerControls.controls, info.controlsInGameMessageBuilder);
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                         split = response.Length > 2000;
@@ -727,12 +1165,12 @@ namespace DeBOTCBot
                 {
                     if (split && halfway > -1)
                     {
-                        await context.EditResponseAsync(response[..halfway]);
-                        await context.FollowupAsync(response[halfway..], true);
+                        await context.RespondRegistered(info, response[..halfway]);
+                        await context.FollowupRegistered(info, response[halfway..], true);
                     }
                     else
                     {
-                        await context.EditResponseAsync(response);
+                        await context.RespondRegistered(info, response);
                     }
                 }
                 catch (Exception exception)
@@ -813,12 +1251,12 @@ namespace DeBOTCBot
                 {
                     if (split && halfway > -1)
                     {
-                        await context.EditResponseAsync(response[..halfway]);
-                        await context.FollowupAsync(response[halfway..], true);
+                        await context.RespondRegistered(info, response[..halfway]);
+                        await context.FollowupRegistered(info, response[halfway..], true);
                     }
                     else
                     {
-                        await context.EditResponseAsync(response);
+                        await context.RespondRegistered(info, response);
                     }
                 }
                 catch (Exception exception)
@@ -841,10 +1279,10 @@ namespace DeBOTCBot
                     {
                         info.botcGame.scripts.Remove(correctedScript);
                         response = $"Removed script: \"{correctedScript}\"";
-                        if (info.storytellerControls != null && info.storytellerControls.controls != null && info.gameStarted)
+                        if (info.storytellerControls != null && info.storytellerControls.controls != 0 && info.gameStarted)
                         {
                             DeBOTCBot.UpdateControls(info);
-                            await info.storytellerControls.controls.ModifyAsync(info.controlsInGameMessageBuilder);
+                            await info.EditMessage(info.storytellerControls.controls, info.controlsInGameMessageBuilder);
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                     }
@@ -861,7 +1299,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -899,12 +1337,12 @@ namespace DeBOTCBot
                 {
                     if (split && halfway > -1)
                     {
-                        await context.EditResponseAsync(response[..halfway]);
-                        await context.FollowupAsync(response[halfway..]);
+                        await context.RespondRegistered(info, response[..halfway]);
+                        await context.FollowupRegistered(info, response[halfway..]);
                     }
                     else
                     {
-                        await context.EditResponseAsync(response);
+                        await context.RespondRegistered(info, response);
                     }
                 }
                 catch (Exception exception)
@@ -944,17 +1382,17 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                     if (responseNext != string.Empty)
                     {
                         if (split && halfway > -1)
                         {
-                            await context.FollowupAsync(responseNext[..halfway], true);
-                            await context.FollowupAsync(responseNext[halfway..], true);
+                            await context.FollowupRegistered(info, responseNext[..halfway], true);
+                            await context.FollowupRegistered(info, responseNext[halfway..], true);
                         }
                         else
                         {
-                            await context.FollowupAsync(responseNext, true);
+                            await context.FollowupRegistered(info, responseNext, true);
                         }
                     }
                 }
@@ -991,7 +1429,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1019,9 +1457,10 @@ namespace DeBOTCBot
                     {
                         response = $"Added new town channel named \"{channel}\" with voice limit {limitClamped}";
                         dictAdded = true;
-                        if (info.townChannel != null)
+                        DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+                        if (townChannel != null && townChannel.Parent != null)
                         {
-                            await info.server.CreateChannelAsync(channel, DiscordChannelType.Voice, info.townChannel.Parent, userLimit: limitClamped);
+                            await info.NewChannel(channel, DiscordChannelType.Voice, townChannel.Parent, userLimit: limitClamped);
                         }
                         await DeBOTCBot.SaveServerInfo(info);
                     }
@@ -1046,7 +1485,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1066,12 +1505,13 @@ namespace DeBOTCBot
                 {
                     if (info.townChannels.Remove(channel))
                     {
-                        if (info.townChannel != null)
+                        DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+                        if (townChannel != null && townChannel.Parent != null)
                         {
-                            DiscordChannel[] channels = [.. info.townChannel.Parent.Children.Where((x) => x.Name == channel)];
-                            if (channels != null && channels.Length > 0)
+                            DiscordChannel childChannel = townChannel.Parent.Children.Where((x) => x.Name == channel).SingleOrDefault();
+                            if (childChannel != null)
                             {
-                                await channels[0].DeleteAsync();
+                                await info.DeleteChannel(childChannel);
                             }
                         }
                         response = $"Removed town channel named \"{channel}\"";
@@ -1090,7 +1530,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1120,12 +1560,13 @@ namespace DeBOTCBot
                         }
                         int limitClamped = Math.Min(Math.Max(0, voiceLimit), 99);
                         info.townChannels.Add(newName, limitClamped);
-                        if (info.townChannel != null)
+                        DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+                        if (townChannel != null && townChannel.Parent != null)
                         {
-                            DiscordChannel[] channels = [..info.townChannel.Parent.Children.Where((x) => x.Name == channel)];
-                            if (channels != null && channels.Length > 0)
+                            DiscordChannel childChannel = townChannel.Parent.Children.Where((x) => x.Name == channel).SingleOrDefault();
+                            if (childChannel != null)
                             {
-                                await channels[0].ModifyAsync(delegate (ChannelEditModel model) { model.Name = newName; model.Userlimit = limitClamped; });
+                                await info.EditChannel(childChannel, delegate (ChannelEditModel model) { model.Name = newName; model.Userlimit = limitClamped; });
                             }
                         }
                         response = $"Changed name of channel \"{channel}\" to \"{newName}\" and the voice limit to {limitClamped}";
@@ -1144,7 +1585,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1175,7 +1616,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1199,16 +1640,18 @@ namespace DeBOTCBot
                         if (!info.townChannels.SequenceEqual(defaultTown))
                         {
                             info.townChannels = defaultTown;
-                            if (info.townChannel != null)
+                            DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+                            if (townChannel != null && townChannel.Parent != null)
                             {
-                                List<DiscordChannel> channels = [.. info.townChannel.Parent.Children];
+                                List<DiscordChannel> channels = [..townChannel.Parent.Children];
                                 for (int i = 0; i < channels.Count; i++)
                                 {
-                                    await channels[i].DeleteAsync();
+                                    await info.DeleteChannel(channels[i]);
                                 }
-                                foreach (KeyValuePair<string, int> pair in info.townChannels)
+                                string[] channelNames = [..info.townChannels.Keys];
+                                for (int i = 0; i < channelNames.Length; i++)
                                 {
-                                    await context.Guild.CreateChannelAsync(pair.Key, DiscordChannelType.Voice, info.townChannel.Parent, userLimit: pair.Value);
+                                    await info.NewChannel(channelNames[i], DiscordChannelType.Voice, townChannel.Parent, userLimit: info.townChannels[channelNames[i]]);
                                 }
                             }
                             response = "Set town channels to default";
@@ -1231,7 +1674,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1266,7 +1709,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1302,7 +1745,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1337,7 +1780,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1370,7 +1813,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1405,7 +1848,7 @@ namespace DeBOTCBot
                 }
                 try
                 {
-                    await context.EditResponseAsync(response);
+                    await context.RespondRegistered(info, response);
                 }
                 catch (Exception exception)
                 {
@@ -1436,9 +1879,11 @@ namespace DeBOTCBot
             .HandleMessageDeleted(MessageDeleted)
             .HandleChannelDeleted(ChannelDeleted)
             .HandleGuildRoleDeleted(RoleDeleted)
-            .HandleGuildMemberRemoved(MemberLeft))
+            .HandleGuildMemberRemoved(MemberLeft)
+            .HandleGuildDeleted(LeftServer))
             .UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) })
-            .UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands), 1396921797160472576); });
+            .UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) => { extension.AddCommand(typeof(BOTCCommands), 1396921797160472576); extension.AddCommand(typeof(AppCommands), 1396921797160472576); })
+            .DisableDefaultLogging();
             DiscordClient client = builder.Build();
             await client.ConnectAsync(new DiscordActivity("Blood on The Clocktower", DiscordActivityType.Playing), DiscordUserStatus.Online);
             await Task.Delay(-1);
@@ -1461,52 +1906,65 @@ namespace DeBOTCBot
         public static async Task BotReady(DiscordClient client, GuildDownloadCompletedEventArgs args)
         {
             Console.WriteLine("Populating servers with data");
-            foreach (KeyValuePair<ulong, DiscordGuild> pair in args.Guilds)
+            List<ulong> serverIDs = [.. args.Guilds.Keys];
+            for (int i = 0; i < serverIDs.Count; i++)
             {
-                ulong serverID = pair.Key;
-                DiscordGuild guild = pair.Value;
+                ulong id = serverIDs[i];
+                DiscordGuild guild = args.Guilds[id];
                 Console.WriteLine($"Found server: \"{guild.Name}\"");
                 ServerInfo info = new(guild);
-                ServerSaveInfo saveInfo = Serialization.ReadFromFile<ServerSaveInfo>($"{Serialization.infoFilePath}\\{serverID}.json");
+                ServerSaveInfo saveInfo = Serialization.ReadFromFile<ServerSaveInfo>($"{Serialization.infoFilePath}\\{id}.json");
                 if (saveInfo != null)
                 {
                     await info.FillSavedValues(saveInfo);
                 }
-                activeServers.Add(serverID, info);
+                activeServers.Add(id, info);
             }
         }
         public static async Task RoleUpdated(DiscordClient client, GuildMemberUpdatedEventArgs args)
         {
             ServerInfo info = activeServers[args.Guild.Id];
-            if (info.storytellerRole == null)
+            DiscordRole storytellerRole = await info.GetRole(info.storytellerRole);
+            if (storytellerRole == null)
             {
                 return;
             }
-            if (args.RolesAfter.Contains(info.storytellerRole))
+            DiscordMember member = args.Member;
+            if (args.RolesAfter.Contains(storytellerRole))
             {
-                if (info.storytellerControls != null && info.storytellerControls.controls != null)
+                
+                if (info.storytellerControls != null)
                 {
-                    await info.storytellerControls.controls.DeleteAsync();
+                    await info.DeleteMessage(info.storytellerControls.controls);
                     info.storytellerControls = null;
                 }
-                info.currentStoryteller = args.Member;
+                info.currentStoryteller = member.Id;
                 UpdateControls(info);
-                info.storytellerControls = new(await client.SendMessageAsync(info.storytellerChannel, info.controlsMessageBuilder));
-                info.Log($"User: {info.currentStoryteller.DisplayName} is the current Storyteller");
+                DiscordChannel storytellerChannel = await info.GetChannel(info.storytellerChannel);
+                if (storytellerChannel != null)
+                {
+                    info.storytellerControls = new(await info.NewMessage(storytellerChannel, info.controlsMessageBuilder));
+                    info.Log($"User: {member.DisplayName} is the current Storyteller");
+                }
             }
-            else if (info.currentStoryteller == args.Member && info.storytellerControls != null && info.storytellerControls.controls != null)
+            else if (info.currentStoryteller == member.Id && info.storytellerControls != null)
             {
                 info.Log("Deleting Storyteller Controls");
-                await info.storytellerControls.controls.DeleteAsync();
-                info.storytellerControls = null;
-                if (info.gameStarted)
+                DiscordMessage controls = await info.GetMessage(info.storytellerControls.controls);
+                if (controls != null)
                 {
-                    await EndGame(info, client, [..info.playerDictionary.Keys]);
+                    await info.DeleteMessage(controls);
                 }
+                info.storytellerControls = null;
+                await EndGame(info, client, [..info.playerDictionary.Keys]);
             }
         }
         public static async Task ButtonPressed(DiscordClient client, ComponentInteractionCreatedEventArgs args)
         {
+            if (!args.Id.StartsWith("deB_BOTC"))
+            {
+                return;
+            }
             ServerInfo info = activeServers[args.Guild.Id];
             List<ulong> currentPlayers = [];
             if (info.playerDictionary != null)
@@ -1515,7 +1973,7 @@ namespace DeBOTCBot
             }
             info.Log($"Button Pressed with ID: \"{args.Id}\"");
             DiscordMember presserMember = await info.server.GetMemberAsync(args.User.Id);
-            if (presserMember == info.currentStoryteller)
+            if (presserMember.Id == info.currentStoryteller)
             {
                 switch (args.Id)
                 {
@@ -1525,15 +1983,16 @@ namespace DeBOTCBot
                             if (info.gameStarted)
                             {
                                 info.Log("Bell Ring Started");
-                                await client.SendMessageAsync(info.announcementsChannel, $"{Formatter.Mention(info.genericPlayerRole)} PLEASE MAKE YOUR WAY TO {Formatter.Mention(info.townChannel)}, YOU WILL BE MOVED IN 10 SECONDS---");
-                                await Task.Delay(TimeSpan.FromSeconds(10));
+                                DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+                                await info.NewMessage(await info.GetChannel(info.announcementsChannel), $"{Formatter.Mention(await info.GetRole(info.genericPlayerRole))} PLEASE MAKE YOUR WAY TO {Formatter.Mention(townChannel)}, YOU WILL BE MOVED IN 10 SECONDS---");
+                                await Task.Delay(10000);
                                 for (int i = 0; i < currentPlayers.Count; i++)
                                 {
                                     DiscordMember member = await info.server.GetMemberAsync(currentPlayers[i]);
-                                    if (member.VoiceState != null && member.VoiceState.ChannelId != info.townChannel.Id)
+                                    if (member.VoiceState != null && member.VoiceState.ChannelId != info.townChannel)
                                     {
                                         info.Log($"User: {member.DisplayName} is being moved to the townhall...");
-                                        await member.PlaceInAsync(info.townChannel);
+                                        await member.PlaceInAsync(townChannel);
                                     }
                                 }
                                 info.Log("Bell Ring Completed");
@@ -1548,7 +2007,7 @@ namespace DeBOTCBot
                                 info.Log("Home Time Started");
                                 for (int i = 0; i < currentPlayers.Count; i++)
                                 {
-                                    DiscordChannel home = info.playerDictionary[currentPlayers[i]];
+                                    DiscordChannel home = await info.GetChannel(info.playerDictionary[currentPlayers[i]]);
                                     DiscordMember member = await info.server.GetMemberAsync(currentPlayers[i]);
                                     if (member.VoiceState != null && member.VoiceState.ChannelId != home.Id)
                                     {
@@ -1562,17 +2021,14 @@ namespace DeBOTCBot
                         }
                     case "deB_BOTCUserSelect":
                         {
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                             if (!info.gameStarted)
                             {
-                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                                 info.Log($"Users Selected: \"{args.Interaction.Data.Resolved.Users.Count}\"");
-                                await args.Message.ModifyAsync(new DiscordMessageBuilder(info.controlsInGameMessageBuilder));
+                                UpdateControls(info, true);
+                                await info.EditMessage(args.Message, new DiscordMessageBuilder(info.controlsInGameMessageBuilder));
                                 await StartGame(info, client, new(args.Interaction.Data.Resolved.Users.Keys));
                                 info.gameStarted = true;
-                            }
-                            else
-                            {
-                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                             }
                             break;
                         }
@@ -1595,19 +2051,9 @@ namespace DeBOTCBot
                             int halfway = -1;
                             for (int i = 0; i < info.storytellerControls.scriptMessages.Count; i++)
                             {
-                                try
-                                {
-                                    await info.storytellerControls.scriptMessages[i].DeleteAsync();
-                                }
-                                catch (Exception exception)
-                                {
-                                    info.Log(exception);
-                                }
-                                finally
-                                {
-                                    info.storytellerControls.scriptMessages.RemoveAt(i);
-                                    i--;
-                                }
+                                await info.DeleteMessage(info.storytellerControls.scriptMessages[i]);
+                                info.storytellerControls.scriptMessages.RemoveAt(i);
+                                i--;
                             }
                             try
                             {
@@ -1620,27 +2066,30 @@ namespace DeBOTCBot
                                 tokensString = "Something went wrong while generating a grimoire! Are there enough of each token type for this number of players?";
                                 info.Log(exception);
                             }
-                            DiscordMessage message = await client.SendMessageAsync(info.storytellerChannel, tokensString);
+                            ulong message = await info.NewMessage(info.storytellerChannel, tokensString);
                             info.storytellerControls.scriptMessages.Add(message);
                             if (orderString != string.Empty)
                             {
                                 if (split && halfway > -1)
                                 {
-                                    message = await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[..halfway]).WithReply(message.Id));
-                                    info.storytellerControls.scriptMessages.Add(message);
-                                    info.storytellerControls.scriptMessages.Add(await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[halfway..]).WithReply(message.Id)));
+                                    info.storytellerControls.scriptMessages.Add(await info.NewMessage(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[..halfway]).WithReply(message)));
+                                    info.storytellerControls.scriptMessages.Add(await info.NewMessage(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString[halfway..]).WithReply(message)));
                                 }
                                 else
                                 {
-                                    info.storytellerControls.scriptMessages.Add(await client.SendMessageAsync(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString).WithReply(message.Id)));
+                                    info.storytellerControls.scriptMessages.Add(await info.NewMessage(info.storytellerChannel, new DiscordMessageBuilder().WithContent(orderString).WithReply(message)));
                                 }
                             }
                             break;
                         }
                     case "deB_BOTCNominateButton":
                         {
-                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
-                            IEnumerable<DiscordMember> players = currentPlayers.Select(async (x) => await info.server.GetMemberAsync(x)).Select((x) => x.Result).Append(info.currentStoryteller);
+                            List<DiscordMember> players = [];
+                            for (int i = 0; i < currentPlayers.Count; i++)
+                            {
+                                players.Add(await info.GetMember(currentPlayers[i]));
+                            }
+                            players.Add(await info.GetMember(info.currentStoryteller));
                             IEnumerable<DiscordSelectComponentOption> nominatables = players.Select((x) => new DiscordSelectComponentOption(x.DisplayName, x.Id.ToString()));
                             DiscordSelectComponent nominatorSelect = new("deB_BOTCNominatorSelect", "Nominator", nominatables, false);
                             DiscordSelectComponent nomineeSelect = new("deB_BOTCNomineeSelect", "Nominee", nominatables, false);
@@ -1657,6 +2106,7 @@ namespace DeBOTCBot
                                 info.botcGame.currentNomination.nominator = player;
                                 if (info.botcGame.currentNomination.nominee != null)
                                 {
+                                    info.Log($"Nomination made from \"{player.name}\" to \"{info.botcGame.currentNomination.nominee.name}\"");
                                     await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Danger, "deB_BOTCBeginVote", "Begin Vote")));
                                     nomMade = true;
                                 }
@@ -1669,6 +2119,10 @@ namespace DeBOTCBot
                             {
                                 await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                             }
+                            else
+                            {
+                            info.voteMessage = await info.NewMessage(info.townChannel, UpdateVoteMessage(info, initial: true));
+                        }
                             break;
                         }
                     case "deB_BOTCNomineeSelect":
@@ -1681,25 +2135,95 @@ namespace DeBOTCBot
                                 info.botcGame.currentNomination.nominee = player;
                                 if (info.botcGame.currentNomination.nominator != null)
                                 {
-                                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Danger, "deB_BOTCBeginVote", "Begin Vote")));
+                                    info.Log($"Nomination made from \"{info.botcGame.currentNomination.nominator.name}\" to \"{player.name}\"");
+                                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().WithContent("").AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Primary, "deB_BOTCBeginVote", "Begin Vote")));
                                     nomMade = true;
                                 }
                             }
                             else
                             {
                                 info.botcGame.currentNomination = new(player, false);
-                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                             }
                             if (!nomMade)
                             {
                                 await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
                             }
+                            else
+                            {
+                                info.voteMessage = await info.NewMessage(info.townChannel, UpdateVoteMessage(info, initial: true));
+                            }
                             break;
                         }
                     case "deB_BOTCBeginVote":
                         {
-                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
-                            await BeginVote(info, client);
+                            try
+                            {
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().WithContent("Vote Began").AddActionRowComponent(new DiscordButtonComponent(DiscordButtonStyle.Danger, "deB_BOTCCancelVote", "Cancel Vote")));
+                                DiscordMessage voteMessage = await info.GetMessage(info.voteMessage);
+                                await info.EditMessage(voteMessage, UpdateVoteMessage(info));
+                                info.voteCancelToken = new();
+                                int votes = -1;
+                                List<Player> toReverse = [];
+                                votes = await BeginVote(info, client, info.voteCancelToken.Token);
+                                if (!info.voteCancelToken.IsCancellationRequested)
+                                {
+                                    info.voteCancelToken.Cancel();
+                                }
+                                string result = "Vote Unsuccessful";
+                                if (votes >= 0)
+                                {
+                                    result = $"Votes: {votes}";
+                                }
+                                await info.EditMessage(voteMessage, result);
+                                info.botcGame.currentNomination = null;
+                                for (int i = 0; i < info.botcGame.playerSeats.Count; i++)
+                                {
+                                    Player player = info.botcGame.playerSeats[i];
+                                    player.handRaised = false;
+                                    player.secondHandRaised = false;
+                                }
+                            }
+                            catch (Exception exception)
+                            {
+                                info.Log(exception);
+                            }
+                            break;
+                        }
+                    case "deB_BOTCCancelVote":
+                        {
+                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.UpdateMessage, new DiscordInteractionResponseBuilder().WithContent("Vote Cancelled"));
+                            try
+                            {
+                                info.voteCancelToken.Cancel();
+                            }
+                            catch (Exception exception)
+                            {
+                                info.Log(exception);
+                            }
+                            break;
+                        }
+                    case "deB_BOTCLifeToggle":
+                        {
+                            IEnumerable<ulong> chosenIDs = args.Interaction.Data.Resolved.Users.Keys;
+                            Player chosenPlayer = info.botcGame.playerSeats.Where((x) => chosenIDs.Contains(x.memberID)).SingleOrDefault();
+                            if (info.gameStarted && chosenPlayer != null)
+                            {
+                                string response = $"{chosenPlayer.name} is now ";
+                                chosenPlayer.dead = !chosenPlayer.dead;
+                                if (chosenPlayer.dead)
+                                {
+                                    response += "dead!";
+                                }
+                                else
+                                {
+                                    response += "alive!";
+                                }
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder().WithContent(response).AsEphemeral());
+                            }
+                            else
+                            {
+                                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                            }
                             break;
                         }
                     default:
@@ -1710,40 +2234,71 @@ namespace DeBOTCBot
                         }
                 }
             }
-            else
+            else if (args.Id.StartsWith("deB_BOTCPlayerVote"))
             {
-                switch (args.Id)
+                int buttonID = int.Parse(args.Id["deB_BOTCPlayerVote".Length..]);
+                Player pressingPlayer = info.botcGame.playerSeats.Where((x) => x.memberID == presserMember.Id).SingleOrDefault();
+                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                if ((pressingPlayer != null && buttonID == pressingPlayer.seat) || /*temp*/presserMember.Id == info.currentStoryteller)
                 {
-                    case "":
-                        {
-                            break;
-                        }
-                    default:
-                        {
-                            info.Log($"Button Pressed by non-storyteller!: \"{args.Id}\"");
-                            await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
-                            break;
-                        }
+                    await info.EditMessage(args.Message, UpdateVoteMessage(info, buttonID, info.botcGame.playerSeats.Where((x) => x.buttonDisabled).Select((x) => x.seat)));
                 }
             }
+            else
+            {
+                info.Log($"Button Pressed by non-storyteller!: \"{args.Id}\"");
+                if (args.Interaction.ResponseState == DiscordInteractionResponseState.Unacknowledged)
+                {
+                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.DeferredMessageUpdate);
+                }
+            }
+            if (args.Interaction.ResponseState == DiscordInteractionResponseState.Replied)
+            {
+                info.RegisterMessage(await args.Interaction.GetOriginalResponseAsync());
+            }
+        }
+        public static async Task LeftServer(DiscordClient client, GuildDeletedEventArgs args)
+        {
+            ulong id = args.Guild.Id;
+            ServerInfo info = activeServers[id];
+            await SaveServerInfo(info);
+            activeServers.Remove(id);
         }
         public static async Task MessageDeleted(DiscordClient client, MessageDeletedEventArgs args)
         {
             ServerInfo info = activeServers[args.Guild.Id];
+            ulong id = args.Message.Id;
+            info.messages.Remove(id);
+            if (info.storytellerControls.controls == id)
+            {
+                await EndGame(info, client, [..info.playerDictionary.Keys]);
+            }
         }
         public static async Task ChannelDeleted(DiscordClient client, ChannelDeletedEventArgs args)
         {
             ServerInfo info = activeServers[args.Guild.Id];
+            if (info.channels.Remove(args.Channel.Id))
+            {
+                await EndGame(info, client, [..info.playerDictionary.Keys]);
+            }
         }
         public static async Task RoleDeleted(DiscordClient client, GuildRoleDeletedEventArgs args)
         {
             ServerInfo info = activeServers[args.Guild.Id];
+            if (info.roles.Remove(args.Role.Id))
+            {
+                await EndGame(info, client, [..info.playerDictionary.Keys]);
+            }
         }
         public static async Task MemberLeft(DiscordClient client, GuildMemberRemovedEventArgs args)
         {
             ServerInfo info = activeServers[args.Guild.Id];
+            if (info.members.Remove(args.Member.Id))
+            {
+                await EndGame(info, client, [..info.playerDictionary.Keys]);
+            }
         }
-        public static void UpdateControls(ServerInfo info)
+        public static async void UpdateControls(ServerInfo info, bool initial = false)
         {
             List<DiscordSelectComponentOption> options = [];
             Dictionary<string, string[]> scriptDict = info.botcGame.scripts;
@@ -1751,7 +2306,6 @@ namespace DeBOTCBot
             for (int i = 0; i < scripts.Length; i++)
             {
                 string label = scripts[i];
-                info.Log($"Adding \"{scripts[i]}\" to available scripts!");
                 options.Add(new(label, label));
             }
             DiscordSelectComponent scriptSelect = new("deB_BOTCScriptSelect", "Script", options, false);
@@ -1760,39 +2314,232 @@ namespace DeBOTCBot
             DiscordButtonComponent homeButton = new(DiscordButtonStyle.Primary, "deB_BOTCHomeButton", "Home Time");
             DiscordButtonComponent nominateButton = new(DiscordButtonStyle.Primary, "deB_BOTCNominateButton", "Nomination");
             DiscordButtonComponent endButton = new(DiscordButtonStyle.Danger, "deB_BOTCEndButton", "End Game");
-            info.controlsMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, select your players!").AddActionRowComponent(userSelect);
-            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(info.currentStoryteller)}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton).AddActionRowComponent(endButton);
+            DiscordUserSelectComponent lifeToggleSelect = new("deB_BOTCLifeToggle", "Player", false, 1, 1);
+            if (initial)
+            {
+                scriptSelect.Disable();
+                bellButton.Disable();
+                homeButton.Disable();
+                nominateButton.Disable();
+                endButton.Disable();
+                lifeToggleSelect.Disable();
+            }
+            info.controlsMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(await info.GetMember(info.currentStoryteller))}, select your players!").AddActionRowComponent(userSelect);
+            info.controlsInGameMessageBuilder = new DiscordMessageBuilder().WithContent($"{Formatter.Mention(await info.GetMember(info.currentStoryteller))}, this is the Storyteller's Interface!").AddActionRowComponent(scriptSelect).AddActionRowComponent(bellButton, homeButton, nominateButton, endButton).AddActionRowComponent(lifeToggleSelect);
         }
-        public static async Task BeginVote(ServerInfo info, DiscordClient client)
+        public static DiscordMessageBuilder UpdateVoteMessage(ServerInfo info, int votesChanged = -1, IEnumerable<int> disabled = null, bool initial = false)
         {
-
+            disabled ??= [];
+            bool banshee = false;
+            if (votesChanged >= 0)
+            {
+                info.Log($"Banshee Check");
+                banshee = info.botcGame.playerSeats[votesChanged].token == BOTCCharacters.allTokens["Banshee"];
+            }
+            List<DiscordButtonComponent> voteButtons = [];
+            int playerCount = info.botcGame.playerSeats.Count;
+            for (int i = 0; i < playerCount; i++)
+            {
+                Player player = info.botcGame.playerSeats[i];
+                bool disable = disabled.Contains(i);
+                info.Log($"Updating {player.name}'s button");
+                string emoji = "👎";
+                DiscordButtonStyle style = DiscordButtonStyle.Danger;
+                if (votesChanged == i)
+                {
+                    info.Log($"Changing {player.name}'s vote");
+                    if (!disable)
+                    {
+                        if (banshee)
+                        {
+                            if (player.secondHandRaised)
+                            {
+                                player.handRaised = false;
+                                player.secondHandRaised = false;
+                            }
+                            else if (player.handRaised)
+                            {
+                                player.secondHandRaised = true;
+                            }
+                            else
+                            {
+                                player.handRaised = true;
+                            }
+                            info.Log($"Banshee second hand raised: {player.secondHandRaised}");
+                        }
+                        else
+                        {
+                            player.handRaised = !player.handRaised;
+                        }
+                    }
+                }
+                if (player.handRaised)
+                {
+                    info.Log($"{player.name}'s hand is raised");
+                    emoji = "🤚";
+                    style = DiscordButtonStyle.Primary;
+                    if (player.secondHandRaised)
+                    {
+                        emoji = "🙌";
+                    }
+                }
+                if (disable)
+                {
+                    info.Log($"Locking {player.name}'s vote in");
+                    style = DiscordButtonStyle.Secondary;
+                }
+                string buttonID = $"deB_BOTCPlayerVote{i}";
+                DiscordButtonComponent newButton = new(style, buttonID, $"Seat {i}", emoji: new(emoji));
+                if (disable || initial)
+                {
+                    info.Log($"Disabling {player.name}'s button");
+                    newButton.Disable();
+                }
+                voteButtons.Add(newButton);
+            }
+            float rowNo = playerCount / 4f;
+            float rowsLeft = rowNo;
+            List<DiscordActionRowComponent> actionRows = [];
+            for (int i = 0; i < (int)MathF.Ceiling(rowNo); i++)
+            {
+                int buttons = 4;
+                if (rowsLeft < 1)
+                {
+                    buttons = (int)MathF.Round(rowsLeft * 4f);
+                }
+                List<DiscordButtonComponent> newButtons = [];
+                for (int j = 0; j < buttons; j++)
+                {
+                    newButtons.Add(voteButtons[0]);
+                    voteButtons.RemoveAt(0);
+                }
+                actionRows.Add(new(newButtons));
+                rowsLeft -= 1;
+            }
+            DiscordMessageBuilder builder = new DiscordMessageBuilder().EnableV2Components().AddTextDisplayComponent($"{Formatter.Mention(info.roles[info.genericPlayerRole])}, {info.botcGame.currentNomination.nominator.mentionString} is nominating {info.botcGame.currentNomination.nominee.mentionString}, cast your vote!");
+            for (int i = 0; i < actionRows.Count; i++)
+            {
+                builder.AddActionRowComponent(actionRows[i]);
+                if (i != actionRows.Count - 1)
+                {
+                    builder.AddSeparatorComponent(new(true, DiscordSeparatorSpacing.Small));
+                }
+            }
+            return builder;
+        }
+        public static async Task NominationTimer(ServerInfo info, ulong id, string mention, CancellationToken cancel)
+        {
+            DiscordMessage message = await info.GetMessage(id);
+            int per = int.Parse(message.Content.Replace($"{mention} - ", "").Replace("**", ""));
+            int counter = per;
+            int asyncDiff = 250;
+            Stopwatch stopWatch = new();
+            while (true)
+            {
+                await Task.Delay((int)MathF.Max(0, 1000 - asyncDiff), cancel);
+                counter--;
+                if (counter <= 0)
+                {
+                    break;
+                }
+                if (stopWatch.IsRunning)
+                {
+                    stopWatch.Restart();
+                }
+                else
+                {
+                    stopWatch.Start();
+                }
+                await info.EditMessage(id, $"**{mention} - {counter}**");
+                stopWatch.Stop();
+                asyncDiff = (int)stopWatch.Elapsed.TotalMilliseconds;
+            }
+            await info.DeleteMessage(id);
+        }
+        public static async Task<int> BeginVote(ServerInfo info, DiscordClient client, CancellationToken cancel)
+        {
+            int timePer = 4;
+            List<Player> votesRemoved = [];
+            int totalVotes = 0;
+            List<int> disabled = [];
+            try
+            {
+                int voter = info.botcGame.currentNomination.nominee.neighbours.Item2;
+                for (int i = 0; i < info.botcGame.playerSeats.Count; i++)
+                {
+                    Player player = info.botcGame.playerSeats[i];
+                    if (!player.dead)
+                    {
+                        player.hasVote = true;
+                    }
+                    if (!player.hasVote)
+                    {
+                        disabled.Add(i);
+                    }
+                }
+                await Task.Delay(1000, cancel);
+                for (int i = 0; i < info.botcGame.playerSeats.Count; i++)
+                {
+                    if (voter >= info.botcGame.playerSeats.Count)
+                    {
+                        voter = 0;
+                    }
+                    Player player = info.botcGame.playerSeats[voter];
+                    await NominationTimer(info, await info.NewMessage(info.townChannel, $"**{player.mentionString} - {timePer}**"), player.mentionString, cancel);
+                    disabled.Add(voter);
+                    if (player.hasVote)
+                    {
+                        await info.EditMessage(info.voteMessage, UpdateVoteMessage(info, voter, disabled));
+                        if (player.handRaised)
+                        {
+                            info.Log($"{player.name} voted");
+                            totalVotes++;
+                            if (player.secondHandRaised)
+                            {
+                                info.Log($"{player.name}, as a Banshee, voted again");
+                                totalVotes++;
+                            }
+                        }
+                        if (player.dead)
+                        {
+                            info.Log($"Removing dead player {player.name}'s vote");
+                            player.hasVote = false;
+                            votesRemoved.Add(player);
+                        }
+                    }
+                    voter++;
+                }
+            }
+            catch (Exception exception)
+            {
+                info.Log(exception);
+                for (int i = 0; i < votesRemoved.Count; i++)
+                {
+                    votesRemoved[i].hasVote = true;
+                }
+                totalVotes = -1;
+            }
+            return totalVotes;
         }
         public static async Task StartGame(ServerInfo info, DiscordClient client, List<ulong> ids)
         {
             info.Log("Starting BOTC Game");
             info.playerDictionary = [];
             List<DiscordMember> currentPlayers = [];
-            //temp
-            List<string> testNames = ["Bill", "Bob", "Jack", "Jill", "Harry", "Hannah", "xXxLeanBeefxXx", "Cocktower", "Harold", "Jessica", "Emma", "Willy", "Jaqueline", "Jason", "Sean"];
-            for (int i = 0; i < 5; i++)
-            {
-                int randomIndex = Random.Shared.Next(0, testNames.Count);
-                info.botcGame.playerSeats.Add(new((ulong)i, testNames[randomIndex]));
-                testNames.RemoveAt(randomIndex);
-            }
-            //temp
             for (int i = 0; i < ids.Count; i++)
             {
                 ulong id = ids[i];
                 DiscordMember member = await info.server.GetMemberAsync(id);
                 currentPlayers.Add(member);
-                //info.botcGame.playerSeats.Add(new(id, member.DisplayName));
+                info.RegisterMember(member);
+                info.botcGame.playerSeats.Add(new(id, member.DisplayName, Formatter.Mention(member)));
             }
             for (int i = 0; i < currentPlayers.Count - 1; ++i)
             {
                 int newIndex = Random.Shared.Next(i, currentPlayers.Count);
                 (currentPlayers[newIndex], currentPlayers[i]) = (currentPlayers[i], currentPlayers[newIndex]);
             }
+            DiscordRole genRole = await info.GetRole(info.genericPlayerRole);
             List<string> channelNames = [..info.homeChannels];
             for (int i = 0; i < currentPlayers.Count; i++)
             {
@@ -1801,40 +2548,71 @@ namespace DeBOTCBot
                     channelNames.Add($"Home #{i + 1}");
                 }
                 int randomIndex = Random.Shared.Next(channelNames.Count);
-                DiscordChannel newHome = await info.server.CreateChannelAsync(channelNames[randomIndex], DiscordChannelType.Voice, info.homesCategory, overwrites: [new DiscordOverwriteBuilder(currentPlayers[i]) { Allowed = DiscordPermission.ViewChannel }]);
+                ulong newHome = await info.NewChannel(channelNames[randomIndex], DiscordChannelType.Voice, info.homesCategory, overwrites: [new DiscordOverwriteBuilder(currentPlayers[i]) { Allowed = DiscordPermission.ViewChannel }]);
                 channelNames.RemoveAt(randomIndex);
                 info.playerDictionary.Add(currentPlayers[i].Id, newHome);
-                await currentPlayers[i].GrantRoleAsync(info.genericPlayerRole);
+                await info.GiveRole(currentPlayers[i], genRole);
             }
-            await info.genericPlayerRole.ModifyPositionAsync(0);
-            await client.SendMessageAsync(info.announcementsChannel, $"{Formatter.Mention(info.genericPlayerRole)} PLEASE MAKE YOUR WAY TO {Formatter.Mention(info.townChannel)}---");
-            List<DiscordChannel> channels = [..info.homesCategory.Children, info.announcementsChannel, info.storytellerChannel, ..info.townChannel.Parent.Children];
+            await genRole.ModifyPositionAsync(0);
+            DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+            await info.NewMessage(info.announcementsChannel, $"{Formatter.Mention(genRole)} PLEASE MAKE YOUR WAY TO {Formatter.Mention(townChannel)}---");
+            List<ulong> childChannels = [];
+            DiscordChannel homesCategory = await info.GetChannel(info.homesCategory);
+            if (homesCategory != null)
+            {
+                childChannels.AddRange(homesCategory.Children.Select((x) => x.Id));
+            }
+            if (townChannel.Parent != null)
+            {
+                childChannels.AddRange(townChannel.Parent.Children.Select((x) => x.Id));
+            }
+            List<ulong> channels = [..childChannels, info.announcementsChannel, info.storytellerChannel];
             for (int i = 0; i < channels.Count; i++)
             {
-                await client.SendMessageAsync(channels[i], $"---STARTING GAME---");
+                await info.NewMessage(channels[i], $"---STARTING GAME---");
+            }
+            UpdateControls(info);
+            if (info.storytellerControls != null)
+            {
+                await info.EditMessage(info.storytellerControls.controls, info.controlsInGameMessageBuilder);
             }
         }
         public static async Task EndGame(ServerInfo info, DiscordClient client, List<ulong> currentPlayers)
         {
+            if (!info.gameStarted)
+            {
+                return;
+            }
             info.Log("Ending BOTC Game");
+            DiscordRole genRole = await info.GetRole(info.genericPlayerRole);
             for (int i = 0; i < currentPlayers.Count; i++)
             {
-                DiscordMember member = await info.server.GetMemberAsync(currentPlayers[i]);
-                await member.ModifyAsync(delegate (MemberEditModel model) { model.VoiceChannel = null; });
-                await member.RevokeRoleAsync(info.genericPlayerRole);
-                await info.playerDictionary[currentPlayers[i]].DeleteAsync();
+                DiscordMember member = await info.GetMember(currentPlayers[i]);
+                await info.EditMember(member, delegate (MemberEditModel model) { model.VoiceChannel = null; });
+                await info.TakeRole(member, genRole);
+                await info.DeleteChannel(info.playerDictionary[currentPlayers[i]]);
+                info.UnregisterMember(member);
             }
             currentPlayers.Clear();
             info.playerDictionary.Clear();
             info.botcGame.playerSeats.Clear();
             info.botcGame.currentNomination = null;
-            await info.currentStoryteller.RevokeRoleAsync(info.storytellerRole);
-            info.currentStoryteller = null;
+            DiscordMember storyteller = await info.GetMember(info.currentStoryteller);
+            DiscordRole storytellerRole = await info.GetRole(info.storytellerRole);
+            await info.TakeRole(storyteller, storytellerRole);
+            await info.UnregisterMember(info.currentStoryteller);
+            info.currentStoryteller = 0;
             info.gameStarted = false;
-            List<DiscordChannel> channels = [info.announcementsChannel, info.storytellerChannel, .. info.townChannel.Parent.Children];
+            List<ulong> townChannels = [];
+            DiscordChannel townChannel = await info.GetChannel(info.townChannel);
+            if (townChannel != null && townChannel.Parent != null)
+            {
+                townChannels.AddRange(townChannel.Parent.Children.Select((x) => x.Id));
+            }
+            List<ulong> channels = [info.announcementsChannel, info.storytellerChannel, ..townChannels];
             for (int i = 0; i < channels.Count; i++)
             {
-                await client.SendMessageAsync(channels[i], $"---END OF GAME---");
+                await info.NewMessage(channels[i], $"---END OF GAME---");
             }
         }
         public static Dictionary<string, int> DefaultTownData()
@@ -1853,11 +2631,15 @@ namespace DeBOTCBot
         {
             return ["Humble Abode", "Grand Mansion", "Utility Shack", "Cottage", "Hobbit Hole", "Treehouse", "Large Shoe", "Burrow", "Caravan", "Lighthouse", "Small Castle", "Dovecoat", "Jester's Quarters", "Wizard Tower", "Dungeon", "Docked Boat", "Campsite", "Local Inn", "Bungalow", "Terrace"];
         }
-        public static bool IsSimilar(string stringOne, string stringTwo)
+        public static bool AreSimilar(params string[] strings)
         {
-            stringOne = stringOne.Replace("'", "").Replace("&", "and").Replace(" ", "");
-            stringTwo = stringTwo.Replace("'", "").Replace("&", "and").Replace(" ", "");
-            return stringOne.Equals(stringTwo, StringComparison.OrdinalIgnoreCase);
+            for (int i = 0; i < strings.Length; i++)
+            {
+                string currentString = strings[i];
+                currentString = currentString.Replace("'", "").Replace("&", "and").Replace(" ", "").ToLower();
+                strings[i] = currentString;
+            }
+            return strings.Distinct().Count() == 1;
         }
         public static string GenerateTokenMessage(ServerInfo info, string[] finalScript, int players)
         {
@@ -1904,6 +2686,7 @@ namespace DeBOTCBot
                 new("Demon Info", firstOrder: 12, firstDesc: "If the game has 7 or more players, Demon learns who the Minions are and learns 3 not-in-play characters from the script")
                 ]);
             scriptTokens.Sort((x, y) => x.nightOrder.Item1.CompareTo(y.nightOrder.Item1));
+            int tokenNo = 1;
             for (int i = 0; i < scriptTokens.Count; i++)
             {
                 Token token = scriptTokens[i];
@@ -1911,11 +2694,13 @@ namespace DeBOTCBot
                 {
                     continue;
                 }
-                finalString += $"- **{token.characterName}**: {token.orderFirstDescription}\r";
+                finalString += $"**{tokenNo} - {token.characterName}**: {token.orderFirstDescription}\r";
+                tokenNo++;
             }
             half = finalString.Length;
             finalString += "\r## Other Nights Order:\r";
             scriptTokens.Sort((x, y) => x.nightOrder.Item2.CompareTo(y.nightOrder.Item2));
+            tokenNo = 1;
             for (int i = 0; i < scriptTokens.Count; i++)
             {
                 Token token = scriptTokens[i];
@@ -1923,7 +2708,8 @@ namespace DeBOTCBot
                 {
                     continue;
                 }
-                finalString += $"- **{token.characterName}**: {token.orderOtherDescription}\r";
+                finalString += $"**{tokenNo} - {token.characterName}**: {token.orderOtherDescription}\r";
+                tokenNo++;
             }
             split = finalString.Length > 2000;
             return finalString;

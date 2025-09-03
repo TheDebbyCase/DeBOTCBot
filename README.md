@@ -29,7 +29,14 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 
 - ## Commands
 	<details>
-	<summary>/botc create</summary>
+	<summary>/help</summary>
+	
+	Sends an ephemeral message containing information on a specified command, mostly the same information as here  
+	
+	</details>
+
+	<details>
+	<summary>/create</summary>
 
 	### Required Permission: Manage Channels  
 
@@ -60,7 +67,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc destroy</summary>
+	<summary>/destroy</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -69,16 +76,16 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc save</summary>
+	<summary>/save</summary>
 	
 	### Required Permission: Administrator  
  
-	Forces relevant server information to save to the bot's database (Currently my PC, all info saved is listed in the ServerSaveInfo class)  
+	Forces the server's information to save to the bot's database (Currently my PC, all info saved is listed in the ServerSaveInfo class)  
 	
 	</details>
 
 	<details>
-	<summary>/botc reset</summary>
+	<summary>/reset</summary>
 	
 	### Required Permission: Administrator  
  
@@ -87,7 +94,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
  
 	<details>
-	<summary>/botc storyteller</summary>
+	<summary>/storyteller</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -96,51 +103,51 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc pandemonium</summary>
+	<summary>/pandemonium</summary>
 	
 	Sends an ephemeral message with links to the official BOTC website and Patreon  
 	
 	</details>
 
 	<details>
-	<summary>/botc tokens show</summary>
+	<summary>/tokens show</summary>
 	
 	Sends an ephemeral message with a list of all character tokens, organised by type  
 	
 	</details>
 
 	<details>
-	<summary>/botc tokens description</summary>
+	<summary>/tokens description</summary>
 	
 	Sends an ephemeral message with the token description of a specified character token  
 	
 	</details>
 
 	<details>
-	<summary>/botc scripts all</summary>
+	<summary>/scripts all</summary>
 	
-	Sends an ephemeral message with a list of all available scripts, with characters, organised by type  
+	Sends an ephemeral message with a list of all available scripts  
 	
 	</details>
  
 	<details>
-	<summary>/botc scripts show</summary>
+	<summary>/scripts show</summary>
 	
 	Sends an ephemeral message with a list of all characters in a specified script, organised by type  
 	
 	</details>
 
 	<details>
-	<summary>/botc scripts new</summary>
+	<summary>/scripts new</summary>
 	
 	### Required Permission: Manage Channels  
  
-	Adds a new available script, specifying name and tokens to use, sends ephemeral message with the script and its tokens, organised by type  
+	Adds a new available script, specifying name and tokens to use, then sends an ephemeral message with the script and its tokens, organised by type  
 	
 	</details>
 
 	<details>
-	<summary>/botc scripts remove</summary>
+	<summary>/scripts remove</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -149,7 +156,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc scripts edit</summary>
+	<summary>/scripts edit</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -158,21 +165,21 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc scripts night</summary>
+	<summary>/scripts night</summary>
 	
 	Creates a night order from a specified, available script, sending an ephemeral message with the tokens, organised by the order they wake at night  
 	
 	</details>
 
 	<details>
-	<summary>/botc scripts roll</summary>
+	<summary>/scripts roll</summary>
 	
 	Creates a grimoire from a specified, available script and number of players, sending an ephemeral message with the tokens, organised by type, and a night order  
 	
 	</details>
 
 	<details>
-	<summary>/botc scripts default</summary>
+	<summary>/scripts default</summary>
 	 
 	### Required Permission: Manage Channels  
 
@@ -181,14 +188,14 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc town show</summary>
+	<summary>/town show</summary>
 	
 	Sends an ephemeral message with a list of all available town channel names and voice limits  
 	
 	</details>
 
 	<details>
-	<summary>/botc town add</summary>
+	<summary>/town add</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -197,7 +204,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc town remove</summary>
+	<summary>/town remove</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -206,7 +213,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc town edit</summary>
+	<summary>/town edit</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -215,7 +222,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc town default</summary>
+	<summary>/town default</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -224,14 +231,14 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc homes show</summary>
+	<summary>/homes show</summary>
 	
 	Sends an ephemeral message with a list of all available home channel names  
 
 	</details>
 
 	<details>
-	<summary>/botc homes add</summary>
+	<summary>/homes add</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -240,7 +247,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc homes remove</summary>
+	<summary>/homes remove</summary>
 	
 	### Required Permission: Manage Channels  
 	
@@ -249,7 +256,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc homes set</summary>
+	<summary>/homes set</summary>
 	
 	### Required Permission: Manage Channels  
  
@@ -258,7 +265,7 @@ If you wish you can also donate to me over on [Ko-Fi](https://ko-fi.com/thedebby
 	</details>
 
 	<details>
-	<summary>/botc homes default</summary>
+	<summary>/homes default</summary>
 	
 	### Required Permission: Manage Channels  
 	

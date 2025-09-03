@@ -12,9 +12,10 @@ namespace DeBOTCBot
                 StreamWriter writer = new(filePath);
                 writer.Write(string.Empty);
             }
-            catch
+            catch (Exception exception)
             {
-                Console.WriteLine($"Unable to write to file at: \"{filePath}\"");
+                ServerInfo.BotLog($"Unable to write to file at: \"{filePath}\"");
+                ServerInfo.BotLog(exception);
             }
         }
         public static void WriteLog(string source, string message, LogType type = LogType.Info)
@@ -34,9 +35,10 @@ namespace DeBOTCBot
                 string toWrite = JsonConvert.SerializeObject(objectToWrite);
                 writer.Write(toWrite);
             }
-            catch
+            catch (Exception exception)
             {
-                Console.WriteLine($"Unable to write to file at: \"{filePath}\"");
+                ServerInfo.BotLog($"Unable to write to file at: \"{filePath}\"");
+                ServerInfo.BotLog(exception);
             }
             finally
             {
@@ -51,9 +53,10 @@ namespace DeBOTCBot
                 reader = new(filePath);
                 return JsonConvert.DeserializeObject<T>(reader.ReadToEnd());
             }
-            catch
+            catch (Exception exception)
             {
-                Console.WriteLine($"Unable to read file at: \"{filePath}\"");
+                ServerInfo.BotLog($"Unable to read file at: \"{filePath}\"");
+                ServerInfo.BotLog(exception);
                 return default;
             }
             finally

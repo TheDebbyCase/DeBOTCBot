@@ -7,9 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DSharpPlus" Version="5.0.0-nightly-02539" />
-    <PackageReference Include="DSharpPlus.Commands" Version="5.0.0-nightly-02539" />
-    <PackageReference Include="DSharpPlus.Interactivity" Version="5.0.0-nightly-02539" />
+    <PackageReference Include="DSharpPlus" Version="5.0.0-nightly-02542" />
+    <PackageReference Include="DSharpPlus.Commands" Version="5.0.0-nightly-02542" />
+    <PackageReference Include="DSharpPlus.Interactivity" Version="5.0.0-nightly-02542" />
+	<RuntimeHostConfigurationOption Include="DSharpPlus.Trace.EnableRestRequestLogging" Value="true" />
+	<RuntimeHostConfigurationOption Include="DSharpPlus.Trace.EnableInboundGatewayLogging" Value="true" />
+	<RuntimeHostConfigurationOption Include="DSharpPlus.Trace.EnableOutboundGatewayLogging" Value="true" />
   </ItemGroup>
 
 </Project>

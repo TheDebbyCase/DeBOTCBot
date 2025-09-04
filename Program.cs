@@ -1978,13 +1978,16 @@ namespace DeBOTCBot
             DiscordClientBuilder builder = DiscordClientBuilder.CreateDefault(token, Intents);
             builder.ConfigureEventHandlers(b => b.HandleGuildMemberUpdated(RoleUpdated)
             .HandleGuildDownloadCompleted(BotReady)
+            .HandleGuildCreated(JoinedServer)
             .HandleComponentInteractionCreated(ButtonPressed)
             .HandleMessageDeleted(MessageDeleted)
             .HandleChannelDeleted(ChannelDeleted)
             .HandleGuildRoleDeleted(RoleDeleted)
             .HandleGuildMemberRemoved(MemberLeft)
             .HandleGuildDeleted(LeftServer)
-            .HandleGuildCreated(JoinedServer))
+            .HandleGuildUnavailable(ServerUnavailable)
+            .HandleGuildAvailable(ServerAvailable)
+            .HandleZombied(ConnectionZombied))
             .UseInteractivity(new InteractivityConfiguration() { ResponseBehavior = DSharpPlus.Interactivity.Enums.InteractionResponseBehavior.Ack, Timeout = TimeSpan.FromSeconds(30) })
             .UseCommands(CommandsAction)
             .DisableDefaultLogging();
@@ -2113,6 +2116,10 @@ namespace DeBOTCBot
             activeServers[info.server.Id] = newInfo;
             await Task.Run(() => Serialization.WriteToFile($"{Serialization.infoFilePath}\\{info.server.Id}.json", saveInfo));
         }
+        public static async Task<ServerSaveInfo> GetSavedInfo(ulong id)
+        {
+            return await Task.Run(() => Serialization.ReadFromFile<ServerSaveInfo>($"{Serialization.infoFilePath}\\{id}.json"));
+        }
         public static async Task BotReady(DiscordClient client, GuildDownloadCompletedEventArgs args)
         {
             ServerInfo.BotLog("Populating servers with data");
@@ -2131,7 +2138,7 @@ namespace DeBOTCBot
             {
                 ulong id = guild.Id;
                 ServerInfo info = new(guild);
-                ServerSaveInfo saveInfo = Serialization.ReadFromFile<ServerSaveInfo>($"{Serialization.infoFilePath}\\{id}.json");
+                ServerSaveInfo saveInfo = await GetSavedInfo(id);
                 if (saveInfo != null)
                 {
                     await info.FillSavedValues(saveInfo);
@@ -2590,6 +2597,84 @@ namespace DeBOTCBot
             {
                 info.Log(exception);
             }
+        }
+        public static async Task ServerUnavailable(DiscordClient client, GuildUnavailableEventArgs args)
+        {
+            DiscordGuild guild = args.Guild;
+            ulong id = guild.Id;
+            ServerInfo.BotLog($"Server: \"{guild.Name}\" is unavailable!");
+            activeServers.TryGetValue(id, out ServerInfo info);
+            try
+            {
+                if (info != null)
+                {
+                    await SaveServerInfo(info);
+                    activeServers.Remove(id);
+                }
+            }
+            catch (Exception exception)
+            {
+                if (info != null)
+                {
+                    info.Log(exception);
+                }
+                else
+                {
+                    ServerInfo.BotLog($"Error occurred as server \"{guild.Name}\" became unavailable!");
+                    ServerInfo.BotLog(exception);
+                }
+            }
+        }
+        public static async Task ServerAvailable(DiscordClient client, GuildAvailableEventArgs args)
+        {
+            DiscordGuild guild = args.Guild;
+            ulong id = guild.Id;
+            ServerInfo.BotLog($"Server: \"{guild.Name}\" is available!");
+            activeServers.TryGetValue(id, out ServerInfo info);
+            try
+            {
+                if (info == null)
+                {
+                    await InitializeServer(guild);
+                }
+                else
+                {
+                    ServerSaveInfo saveInfo = await GetSavedInfo(id);
+                    saveInfo ??= new(info);
+                    await info.FillSavedValues(saveInfo);
+                }
+            }
+            catch (Exception exception)
+            {
+                if (info != null)
+                {
+                    info.Log(exception);
+                }
+                else
+                {
+                    ServerInfo.BotLog($"Error occurred as server \"{guild.Name}\" became available!");
+                    ServerInfo.BotLog(exception);
+                }
+            }
+        }
+        public static async Task ConnectionZombied(DiscordClient client, ZombiedEventArgs args)
+        {
+            ServerInfo.BotLog($"Connection zombied!");
+            List<ulong> serverIDs = [..activeServers.Keys];
+            for (int i = 0; i < serverIDs.Count; i++)
+            {
+                ulong id = serverIDs[i];
+                ServerInfo info = activeServers[id];
+                try
+                {
+                    await SaveServerInfo(info);
+                }
+                catch (Exception exception)
+                {
+                    info.Log(exception);
+                }
+            }
+            activeServers.Clear();
         }
         public static async Task<DiscordMessageBuilder> UpdateControls(ServerInfo info, bool ingame, bool initial = false)
         {

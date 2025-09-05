@@ -761,7 +761,7 @@ namespace DeBOTCBot
         }
         public class HelpAutoComplete : SimpleAutoCompleteProvider
         {
-            public readonly static DiscordAutoCompleteChoice[] commands = [..helpResponses.Keys.Select((x) => new DiscordAutoCompleteChoice(x, x))];
+            public readonly static DiscordAutoCompleteChoice[] commands = [..helpResponses.Keys.Select((x) => new DiscordAutoCompleteChoice($"/{x}", x))];
             protected override bool AllowDuplicateValues => false;
             protected override SimpleAutoCompleteStringMatchingMethod MatchingMethod => SimpleAutoCompleteStringMatchingMethod.Fuzzy;
             protected override StringComparison Comparison => StringComparison.InvariantCultureIgnoreCase;

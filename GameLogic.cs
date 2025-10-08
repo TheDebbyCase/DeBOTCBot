@@ -73,64 +73,70 @@
             orderOtherDescription = otherDesc;
         }
     }
-    public class Player(ulong id, string displayName, string mention)
-    {
-        public string name = displayName;
-        public string mentionString = mention;
-        public ulong memberID = id;
-        public int totalPlayers;
-        public int seat;
-        public Token token;
-        public bool banshee = false;
-        public (int, int) neighbours;
-        public bool dead = false;
-        public bool handRaised = false;
-        public bool secondHandRaised = false;
-        public bool buttonDisabled = false;
-        public bool hasVote = true;
-        public bool swapSafe = false;
-        public void SetData(int index, Token character, int count)
-        {
-            totalPlayers = count;
-            seat = index;
-            token = character;
-            neighbours = CalculateNeighbours(index);
-            swapSafe = false;
-        }
-        public void NewSeat(int index)
-        {
-            seat = index;
-            neighbours = CalculateNeighbours(index);
-            swapSafe = true;
-        }
-        public (int, int) CalculateNeighbours(int index)
-        {
-            return (DeBOTCBot.Iterate(totalPlayers, index, false), DeBOTCBot.Iterate(totalPlayers, index));
-        }
-    }
-    public class Nomination
-    {
-        public Nomination(Player player, bool nominating)
-        {
-            if (nominating)
-            {
-                nominator = player;
-            }
-            else
-            {
-                nominee = player;
-            }
-        }
-        public Player nominator;
-        public Player nominee;
-    }
+    //public class Player(ulong id, string displayName, string mention)
+    //{
+    //    public string name = displayName;
+    //    public string mentionString = mention;
+    //    public ulong memberID = id;
+    //    public int totalPlayers;
+    //    public int seat;
+    //    public Token token;
+    //    public bool banshee = false;
+    //    public (int, int) neighbours;
+    //    public bool dead = false;
+    //    public bool handRaised = false;
+    //    public bool secondHandRaised = false;
+    //    public bool buttonDisabled = false;
+    //    public bool hasVote = true;
+    //    public bool swapSafe = false;
+    //    public void SetData(int index, Token character, int count)
+    //    {
+    //        totalPlayers = count;
+    //        seat = index;
+    //        token = character;
+    //        neighbours = CalculateNeighbours(index);
+    //        swapSafe = false;
+    //    }
+    //    public void NewSeat(int index)
+    //    {
+    //        seat = index;
+    //        neighbours = CalculateNeighbours(index);
+    //        swapSafe = true;
+    //    }
+    //    public (int, int) CalculateNeighbours(int index)
+    //    {
+    //        return (DeBOTCBot.Iterate(totalPlayers, index, false), DeBOTCBot.Iterate(totalPlayers, index));
+    //    }
+    //}
+    //public class Nomination
+    //{
+    //    public Nomination(Player player, bool nominating)
+    //    {
+    //        if (nominating)
+    //        {
+    //            nominator = player;
+    //        }
+    //        else
+    //        {
+    //            nominee = player;
+    //        }
+    //    }
+    //    public Player nominator;
+    //    public Player nominee;
+    //}
     public class BOTCCharacters
     {
-        public static readonly Dictionary<string, Token> allTokens = GenerateTokens();
+        public static readonly Dictionary<string, Token> demonTokens = GenerateDemons();
+        public static readonly Dictionary<string, Token> minionTokens = GenerateMinions();
+        public static readonly Dictionary<string, Token> evilTokens = demonTokens.Merge(minionTokens);
+        public static readonly Dictionary<string, Token> outsiderTokens = GenerateOutsiders();
+        public static readonly Dictionary<string, Token> townsfolkTokens = GenerateTownsfolks();
+        public static readonly Dictionary<string, Token> goodTokens = outsiderTokens.Merge(townsfolkTokens);
+        public static readonly Dictionary<string, Token> allTokens = demonTokens.Merge(minionTokens, outsiderTokens, townsfolkTokens);
         public ServerInfo info;
         public Dictionary<string, string[]> scripts;
-        public List<Player> playerSeats = [];
-        public Nomination currentNomination;
+        //public List<Player> playerSeats = [];
+        //public Nomination currentNomination;
         public void Initialize(ServerInfo newInfo = null)
         {
             if (newInfo != null)
@@ -197,135 +203,135 @@
                 }
                 info.Log($"Token {i + 1}: \"{tokens[i].characterName}\"", consoleColor);
             }
-            if (playerSeats.Count == tokens.Count)
-            {
-                List<Token> availableTokens = [..tokens];
-                List<Player> checkNeighbours = [];
-                for (int i = 0; i < playerSeats.Count; i++)
-                {
-                    if (availableTokens.Count == 0)
-                    {
-                        break;
-                    }
-                    Player player = playerSeats[i];
-                    Token token = availableTokens[Random.Shared.Next(0, availableTokens.Count)];
-                    info.Log($"Setting player \"{player.name}\" to character: \"{token.characterName}\"");
-                    player.SetData(i, token, playerSeats.Count);
-                    availableTokens.Remove(token);
-                    if (token.neighbourGuarantees.Length > 0)
-                    {
-                        checkNeighbours.Add(player);
-                    }
-                }
-                for (int i = 0; i < checkNeighbours.Count; i++)
-                {
-                    Player player = checkNeighbours[i];
-                    info.Log($"Checking neighbours of \"{player.name}\"");
-                    (Token, Token) neighbours = (playerSeats[player.neighbours.Item1].token, playerSeats[player.neighbours.Item2].token);
-                    if (player.token.neighbourGuarantees.Length == 1)
-                    {
-                        CharacterType type = (CharacterType)Enum.ToObject(typeof(CharacterType), player.token.neighbourGuarantees[0]);
-                        info.Log($"Checking type \"{type}\" against type \"{neighbours.Item1.characterType}\" and \"{neighbours.Item2.characterType}\"");
-                        if (neighbours.Item1.characterType != type && neighbours.Item2.characterType != type)
-                        {
-                            List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-                            byte typeValue = (byte)type;
-                            while (swappablePlayers.Count == 0)
-                            {
-                                typeValue++;
-                                if (typeValue > (byte)CharacterType.Townsfolk)
-                                {
-                                    break;
-                                }
-                                type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
-                                swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-                            }
-                            Player neighbour;
-                            if (Random.Shared.Next(0, 2) == 0)
-                            {
-                                neighbour = playerSeats[player.neighbours.Item1];
-                            }
-                            else
-                            {
-                                neighbour = playerSeats[player.neighbours.Item2];
-                            }
-                            info.Log($"Swapping player \"{neighbour.name}\" with a player of type \"{type}\"");
-                            Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
-                            if (player.token.characterName == "Marionette")
-                            {
-                                Player summoner = swappablePlayers.Where((x) => x.token.characterName == "Summoner").SingleOrDefault();
-                                if (summoner != null)
-                                {
-                                    swappingPlayer = summoner;
-                                }
-                            }
-                            info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
-                            int swappingIndex = playerSeats.IndexOf(swappingPlayer);
-                            int neighbourIndex = playerSeats.IndexOf(neighbour);
-                            neighbour.NewSeat(swappingIndex);
-                            swappingPlayer.NewSeat(neighbourIndex);
-                            (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
-                        }
-                    }
-                    else
-                    {
-                        int randomIndex = Random.Shared.Next(0, 2);
-                        CharacterType type = player.token.neighbourGuarantees[randomIndex];
-                        if (neighbours.Item1.characterType != type)
-                        {
-                            List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-                            byte typeValue = (byte)type;
-                            while (swappablePlayers.Count == 0)
-                            {
-                                typeValue++;
-                                if (typeValue > (byte)CharacterType.Townsfolk)
-                                {
-                                    break;
-                                }
-                                type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
-                                swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-                            }
-                            info.Log($"Swapping player \"{playerSeats[player.neighbours.Item1].name}\" with a player of type \"{type}\"");
-                            Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
-                            info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
-                            int swappingIndex = playerSeats.IndexOf(swappingPlayer);
-                            int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item1]);
-                            playerSeats[player.neighbours.Item1].NewSeat(swappingIndex);
-                            swappingPlayer.NewSeat(neighbourIndex);
-                            (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
-                        }
-                        randomIndex++;
-                        if (randomIndex > 1)
-                        {
-                            randomIndex = 0;
-                        }
-                        type = player.token.neighbourGuarantees[randomIndex];
-                        if (neighbours.Item2.characterType != type)
-                        {
-                            List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-                            byte typeValue = (byte)type;
-                            while (swappablePlayers.Count == 0)
-                            {
-                                typeValue++;
-                                if (typeValue > (byte)CharacterType.Townsfolk)
-                                {
-                                    break;
-                                }
-                                type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
-                                swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-                            }
-                            info.Log($"Swapping player \"{playerSeats[player.neighbours.Item2].name}\" with a player of type \"{type}\"");
-                            Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
-                            info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
-                            int swappingIndex = playerSeats.IndexOf(swappingPlayer);
-                            int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item2]);
-                            playerSeats[player.neighbours.Item2].NewSeat(swappingIndex);
-                            swappingPlayer.NewSeat(neighbourIndex);
-                            (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
-                        }
-                    }
-                }
-            }
+            //if (playerSeats.Count == tokens.Count)
+            //{
+            //    List<Token> availableTokens = [..tokens];
+            //    List<Player> checkNeighbours = [];
+            //    for (int i = 0; i < playerSeats.Count; i++)
+            //    {
+            //        if (availableTokens.Count == 0)
+            //        {
+            //            break;
+            //        }
+            //        Player player = playerSeats[i];
+            //        Token token = availableTokens[Random.Shared.Next(0, availableTokens.Count)];
+            //        info.Log($"Setting player \"{player.name}\" to character: \"{token.characterName}\"");
+            //        player.SetData(i, token, playerSeats.Count);
+            //        availableTokens.Remove(token);
+            //        if (token.neighbourGuarantees.Length > 0)
+            //        {
+            //            checkNeighbours.Add(player);
+            //        }
+            //    }
+            //    for (int i = 0; i < checkNeighbours.Count; i++)
+            //    {
+            //        Player player = checkNeighbours[i];
+            //        info.Log($"Checking neighbours of \"{player.name}\"");
+            //        (Token, Token) neighbours = (playerSeats[player.neighbours.Item1].token, playerSeats[player.neighbours.Item2].token);
+            //        if (player.token.neighbourGuarantees.Length == 1)
+            //        {
+            //            CharacterType type = (CharacterType)Enum.ToObject(typeof(CharacterType), player.token.neighbourGuarantees[0]);
+            //            info.Log($"Checking type \"{type}\" against type \"{neighbours.Item1.characterType}\" and \"{neighbours.Item2.characterType}\"");
+            //            if (neighbours.Item1.characterType != type && neighbours.Item2.characterType != type)
+            //            {
+            //                List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+            //                byte typeValue = (byte)type;
+            //                while (swappablePlayers.Count == 0)
+            //                {
+            //                    typeValue++;
+            //                    if (typeValue > (byte)CharacterType.Townsfolk)
+            //                    {
+            //                        break;
+            //                    }
+            //                    type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
+            //                    swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+            //                }
+            //                Player neighbour;
+            //                if (Random.Shared.Next(0, 2) == 0)
+            //                {
+            //                    neighbour = playerSeats[player.neighbours.Item1];
+            //                }
+            //                else
+            //                {
+            //                    neighbour = playerSeats[player.neighbours.Item2];
+            //                }
+            //                info.Log($"Swapping player \"{neighbour.name}\" with a player of type \"{type}\"");
+            //                Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
+            //                if (player.token.characterName == "Marionette")
+            //                {
+            //                    Player summoner = swappablePlayers.Where((x) => x.token.characterName == "Summoner").SingleOrDefault();
+            //                    if (summoner != null)
+            //                    {
+            //                        swappingPlayer = summoner;
+            //                    }
+            //                }
+            //                info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
+            //                int swappingIndex = playerSeats.IndexOf(swappingPlayer);
+            //                int neighbourIndex = playerSeats.IndexOf(neighbour);
+            //                neighbour.NewSeat(swappingIndex);
+            //                swappingPlayer.NewSeat(neighbourIndex);
+            //                (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
+            //            }
+            //        }
+            //        else
+            //        {
+            //            int randomIndex = Random.Shared.Next(0, 2);
+            //            CharacterType type = player.token.neighbourGuarantees[randomIndex];
+            //            if (neighbours.Item1.characterType != type)
+            //            {
+            //                List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+            //                byte typeValue = (byte)type;
+            //                while (swappablePlayers.Count == 0)
+            //                {
+            //                    typeValue++;
+            //                    if (typeValue > (byte)CharacterType.Townsfolk)
+            //                    {
+            //                        break;
+            //                    }
+            //                    type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
+            //                    swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+            //                }
+            //                info.Log($"Swapping player \"{playerSeats[player.neighbours.Item1].name}\" with a player of type \"{type}\"");
+            //                Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
+            //                info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
+            //                int swappingIndex = playerSeats.IndexOf(swappingPlayer);
+            //                int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item1]);
+            //                playerSeats[player.neighbours.Item1].NewSeat(swappingIndex);
+            //                swappingPlayer.NewSeat(neighbourIndex);
+            //                (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
+            //            }
+            //            randomIndex++;
+            //            if (randomIndex > 1)
+            //            {
+            //                randomIndex = 0;
+            //            }
+            //            type = player.token.neighbourGuarantees[randomIndex];
+            //            if (neighbours.Item2.characterType != type)
+            //            {
+            //                List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+            //                byte typeValue = (byte)type;
+            //                while (swappablePlayers.Count == 0)
+            //                {
+            //                    typeValue++;
+            //                    if (typeValue > (byte)CharacterType.Townsfolk)
+            //                    {
+            //                        break;
+            //                    }
+            //                    type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
+            //                    swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
+            //                }
+            //                info.Log($"Swapping player \"{playerSeats[player.neighbours.Item2].name}\" with a player of type \"{type}\"");
+            //                Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
+            //                info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
+            //                int swappingIndex = playerSeats.IndexOf(swappingPlayer);
+            //                int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item2]);
+            //                playerSeats[player.neighbours.Item2].NewSeat(swappingIndex);
+            //                swappingPlayer.NewSeat(neighbourIndex);
+            //                (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
+            //            }
+            //        }
+            //    }
+            //}
             return tokens;
         }
         public List<Token> ChooseCharacters(List<Token> scriptTokens, int playerCount)
@@ -858,48 +864,6 @@
             newCompleted = completedSpecialRules;
             return adjustedList;
         }
-        public static Dictionary<string, Token> GenerateTokens()
-        {
-            Dictionary<string, Token> tokens = [];
-            CharacterType[] characterTypes = Enum.GetValues<CharacterType>();
-            for (int i = 0; i < characterTypes.Length; i++)
-            {
-                tokens = tokens.Concat(TokensFromType(characterTypes[i])).ToDictionary();
-            }
-            return tokens;
-        }
-        public static Dictionary<string, Token> TokensFromType(CharacterType type)
-        {
-            Dictionary<string, Token> newTokens = [];
-            switch (type)
-            {
-                case CharacterType.Demon:
-                    {
-                        newTokens = GenerateDemons();
-                        break;
-                    }
-                case CharacterType.Minion:
-                    {
-                        newTokens = GenerateMinions();
-                        break;
-                    }
-                case CharacterType.Outsider:
-                    {
-                        newTokens = GenerateOutsiders();
-                        break;
-                    }
-                case CharacterType.Townsfolk:
-                    {
-                        newTokens = GenerateTownsfolks();
-                        break;
-                    }
-                default:
-                    {
-                        break;
-                    }
-            }
-            return newTokens;
-        }
         public static Dictionary<string, Token> GenerateDemons()
         {
             List<Token> demons = [];
@@ -1149,7 +1113,7 @@
             List<string> scriptNames = [..scripts.Keys];
             for (int i = 0; i < scriptNames.Count; i++)
             {
-                result = DeBOTCBot.AreSimilar(checkingScript, scriptNames[i]);
+                result = checkingScript.AreSimilar(scriptNames[i]);
                 if (result)
                 {
                     exactScript = scriptNames[i];
@@ -1174,7 +1138,7 @@
             List<string> tokenNames = [..allTokens.Keys];
             for (int i = 0; i < tokenNames.Count; i++)
             {
-                result = DeBOTCBot.AreSimilar(checkingToken, tokenNames[i]);
+                result = checkingToken.AreSimilar(tokenNames[i]);
                 if (result)
                 {
                     exactToken = tokenNames[i];

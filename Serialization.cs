@@ -1,67 +1,72 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json;
 namespace DeBOTCBot
 {
     public static class Serialization
     {
         internal const string infoFilePath = "D:\\Stuff\\Discord\\Bot Server Info";
-        public static void ResetDebugLog()
+        public static async Task ResetDebugLog()
         {
             string filePath = $"{infoFilePath}\\Output.log";
             try
             {
                 StreamWriter writer = new(filePath);
-                writer.Write(string.Empty);
+                await writer.WriteAsync(string.Empty);
             }
             catch (Exception exception)
             {
-                ServerInfo.BotLog($"Unable to write to file at: \"{filePath}\"");
-                ServerInfo.BotLog(exception);
+                await ServerInfo.BotLog($"Unable to write to file at: \"{filePath}\"");
+                await ServerInfo.BotLog(exception);
             }
         }
-        public static void WriteLog(string source, string message, LogType type = LogType.Info)
+        public static async Task WriteLog(string source, string message, LogType type = LogType.Info)
         {
             string timeServerString = $"[{DateTime.Now.ToLongTimeString()} {DateTime.Now.ToShortDateString()}] [{type}  :   {source}]";
             StreamWriter writer = File.AppendText($"{infoFilePath}\\Output.log");
             string toWrite = $"{timeServerString} {message.Replace("\n", $"\n{timeServerString}")}\r\n";
-            writer.Write(toWrite);
-            writer.Close();
+            await writer.WriteAsync(toWrite);
+            await writer.DisposeAsync();
         }
-        public static void WriteToFile<T>(string filePath, T objectToWrite) where T : new()
+        public static async Task WriteToFile<T>(string filePath, T objectToWrite) where T : new()
         {
-            StreamWriter writer = null;
+            FileStream file = null;
             try
             {
-                writer = new(filePath);
-                string toWrite = JsonConvert.SerializeObject(objectToWrite);
-                writer.Write(toWrite);
+                file = new(filePath, FileMode.Create);
+                await JsonSerializer.SerializeAsync(file, objectToWrite);
             }
             catch (Exception exception)
             {
-                ServerInfo.BotLog($"Unable to write to file at: \"{filePath}\"");
-                ServerInfo.BotLog(exception);
+                await ServerInfo.BotLog($"Unable to write to file at: \"{filePath}\"");
+                await ServerInfo.BotLog(exception);
             }
             finally
             {
-                writer?.Close();
+                if (file != null)
+                {
+                    await file.DisposeAsync();
+                }
             }
         }
-        public static T ReadFromFile<T>(string filePath) where T : new()
+        public static async ValueTask<T> ReadFromFile<T>(string filePath) where T : new()
         {
-            StreamReader reader = null;
+            FileStream file = null;
             try
             {
-                reader = new(filePath);
-                return JsonConvert.DeserializeObject<T>(reader.ReadToEnd());
+                file = new(filePath, FileMode.Open);
+                return await JsonSerializer.DeserializeAsync<T>(file);
             }
             catch (Exception exception)
             {
-                ServerInfo.BotLog($"Unable to read file at: \"{filePath}\"");
-                ServerInfo.BotLog(exception);
+                await ServerInfo.BotLog($"Unable to read file at: \"{filePath}\"");
+                await ServerInfo.BotLog(exception);
                 return default;
             }
             finally
             {
-                reader?.Close();
+                if (file != null)
+                {
+                    await file.DisposeAsync();
+                }
             }
         }
     }

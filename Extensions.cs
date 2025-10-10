@@ -98,15 +98,34 @@ namespace DeBOTCBot
             }
             return strings.Distinct().Count() == 1;
         }
-        public static bool AreSimilar(this string first, params string[] others)
+        public static bool AreSimilar(this string first, string other)
         {
-            string[] strings = new string[others.Length + 1];
-            for (int i = 0; i < strings.Length; i++)
+            return first.AreSimilar([other]);
+
+        }
+        public static bool AreSimilar(this string first, string[] others)
+        {
+            if (others == null)
+            {
+                return false;
+            }
+            int newArraySize = 1 + others.Length;
+            string[] strings = new string[newArraySize];
+            for (int i = 0; i < others.Length; i++)
             {
                 strings[i] = others[i];
             }
             strings[^1] = first;
             return strings.AreSimilar();
+        }
+        public static string ValidFileName(this string name)
+        {
+            char[] invalid = Path.GetInvalidFileNameChars();
+            for (int i = 0; i < invalid.Length; i++)
+            {
+                name = name.Replace(invalid[i].ToString(), "");
+            }
+            return name;
         }
     }
 }

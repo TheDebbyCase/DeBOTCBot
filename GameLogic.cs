@@ -1,4 +1,6 @@
-﻿namespace DeBOTCBot
+﻿using System.Text.Json;
+using System.Text.Json.Nodes;
+namespace DeBOTCBot
 {
     public enum CharacterType
     {
@@ -6,6 +8,25 @@
         Minion,
         Outsider,
         Townsfolk
+    }
+    public class ScriptJSONPart(string id)
+    {
+        public string id = id;
+        private static readonly JsonSerializerOptions options = new() { IncludeFields = true };
+        public static string WriteScriptJSON(string author, string name, string[] tokens)
+        {
+            JsonArray array = [JsonSerializer.SerializeToNode(new ScriptJSONMeta(author, name), options)];
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                array.Add(JsonSerializer.SerializeToNode(new ScriptJSONPart(BOTCCharacters.TokenToId(tokens[i])), options));
+            }
+            return array.ToJsonString(new() { WriteIndented = true });
+        }
+    }
+    public class ScriptJSONMeta(string author, string name) : ScriptJSONPart("_meta")
+    {
+        public string author = author;
+        public string name = name;
     }
     public class Range2D
     {
@@ -47,10 +68,9 @@
         public readonly bool specialRule;
         public readonly CharacterType[] neighbourGuarantees;
         public readonly string description;
-        public readonly (int, int) nightOrder;
-        public readonly string orderFirstDescription;
-        public readonly string orderOtherDescription;
-        public Token(string name, TypeRanges addingTypes = null, string[] addingCharacters = null, string[] removingCharacters = null, bool rule = false, CharacterType[] neighbours = null, int firstOrder = -1, int otherOrder = -1, string firstDesc = "", string otherDesc = "", string desc = "")
+        public readonly int firstOrder;
+        public readonly int otherOrder;
+        public Token(string name, TypeRanges addingTypes = null, string[] addingCharacters = null, string[] removingCharacters = null, bool rule = false, CharacterType[] neighbours = null, string desc = "")
         {
             characterName = name;
             addingTypes ??= new();
@@ -68,64 +88,14 @@
                 neighbourGuarantees = [neighbourGuarantees[0], neighbourGuarantees[1]];
             }
             description = desc;
-            nightOrder = (firstOrder, otherOrder);
-            orderFirstDescription = firstDesc;
-            orderOtherDescription = otherDesc;
+            firstOrder = BOTCCharacters.GetNightOrder(characterName, true);
+            otherOrder = BOTCCharacters.GetNightOrder(characterName, false);
         }
     }
-    //public class Player(ulong id, string displayName, string mention)
-    //{
-    //    public string name = displayName;
-    //    public string mentionString = mention;
-    //    public ulong memberID = id;
-    //    public int totalPlayers;
-    //    public int seat;
-    //    public Token token;
-    //    public bool banshee = false;
-    //    public (int, int) neighbours;
-    //    public bool dead = false;
-    //    public bool handRaised = false;
-    //    public bool secondHandRaised = false;
-    //    public bool buttonDisabled = false;
-    //    public bool hasVote = true;
-    //    public bool swapSafe = false;
-    //    public void SetData(int index, Token character, int count)
-    //    {
-    //        totalPlayers = count;
-    //        seat = index;
-    //        token = character;
-    //        neighbours = CalculateNeighbours(index);
-    //        swapSafe = false;
-    //    }
-    //    public void NewSeat(int index)
-    //    {
-    //        seat = index;
-    //        neighbours = CalculateNeighbours(index);
-    //        swapSafe = true;
-    //    }
-    //    public (int, int) CalculateNeighbours(int index)
-    //    {
-    //        return (DeBOTCBot.Iterate(totalPlayers, index, false), DeBOTCBot.Iterate(totalPlayers, index));
-    //    }
-    //}
-    //public class Nomination
-    //{
-    //    public Nomination(Player player, bool nominating)
-    //    {
-    //        if (nominating)
-    //        {
-    //            nominator = player;
-    //        }
-    //        else
-    //        {
-    //            nominee = player;
-    //        }
-    //    }
-    //    public Player nominator;
-    //    public Player nominee;
-    //}
     public class BOTCCharacters
     {
+        public static readonly List<(string, string)> firstNightOrder = GenerateNightOrder(true);
+        public static readonly List<(string, string)> otherNightOrder = GenerateNightOrder(false);
         public static readonly Dictionary<string, Token> demonTokens = GenerateDemons();
         public static readonly Dictionary<string, Token> minionTokens = GenerateMinions();
         public static readonly Dictionary<string, Token> evilTokens = demonTokens.Merge(minionTokens);
@@ -135,8 +105,6 @@
         public static readonly Dictionary<string, Token> allTokens = demonTokens.Merge(minionTokens, outsiderTokens, townsfolkTokens);
         public ServerInfo info;
         public Dictionary<string, string[]> scripts;
-        //public List<Player> playerSeats = [];
-        //public Nomination currentNomination;
         public void Initialize(ServerInfo newInfo = null)
         {
             if (newInfo != null)
@@ -165,7 +133,7 @@
                 }
                 else
                 {
-                    info.Log($"\"{name}\" was not a valid token, did you misspell it?");
+                    _ = info.Log($"\"{name}\" was not a valid token, did you misspell it?");
                 }
             }
             List<Token> tokens = ChooseCharacters(scriptTokens, playerCount);
@@ -201,143 +169,14 @@
                             break;
                         }
                 }
-                info.Log($"Token {i + 1}: \"{tokens[i].characterName}\"", consoleColor);
+                _ = info.Log($"Token {i + 1}: \"{tokens[i].characterName}\"", consoleColor);
             }
-            //if (playerSeats.Count == tokens.Count)
-            //{
-            //    List<Token> availableTokens = [..tokens];
-            //    List<Player> checkNeighbours = [];
-            //    for (int i = 0; i < playerSeats.Count; i++)
-            //    {
-            //        if (availableTokens.Count == 0)
-            //        {
-            //            break;
-            //        }
-            //        Player player = playerSeats[i];
-            //        Token token = availableTokens[Random.Shared.Next(0, availableTokens.Count)];
-            //        info.Log($"Setting player \"{player.name}\" to character: \"{token.characterName}\"");
-            //        player.SetData(i, token, playerSeats.Count);
-            //        availableTokens.Remove(token);
-            //        if (token.neighbourGuarantees.Length > 0)
-            //        {
-            //            checkNeighbours.Add(player);
-            //        }
-            //    }
-            //    for (int i = 0; i < checkNeighbours.Count; i++)
-            //    {
-            //        Player player = checkNeighbours[i];
-            //        info.Log($"Checking neighbours of \"{player.name}\"");
-            //        (Token, Token) neighbours = (playerSeats[player.neighbours.Item1].token, playerSeats[player.neighbours.Item2].token);
-            //        if (player.token.neighbourGuarantees.Length == 1)
-            //        {
-            //            CharacterType type = (CharacterType)Enum.ToObject(typeof(CharacterType), player.token.neighbourGuarantees[0]);
-            //            info.Log($"Checking type \"{type}\" against type \"{neighbours.Item1.characterType}\" and \"{neighbours.Item2.characterType}\"");
-            //            if (neighbours.Item1.characterType != type && neighbours.Item2.characterType != type)
-            //            {
-            //                List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-            //                byte typeValue = (byte)type;
-            //                while (swappablePlayers.Count == 0)
-            //                {
-            //                    typeValue++;
-            //                    if (typeValue > (byte)CharacterType.Townsfolk)
-            //                    {
-            //                        break;
-            //                    }
-            //                    type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
-            //                    swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-            //                }
-            //                Player neighbour;
-            //                if (Random.Shared.Next(0, 2) == 0)
-            //                {
-            //                    neighbour = playerSeats[player.neighbours.Item1];
-            //                }
-            //                else
-            //                {
-            //                    neighbour = playerSeats[player.neighbours.Item2];
-            //                }
-            //                info.Log($"Swapping player \"{neighbour.name}\" with a player of type \"{type}\"");
-            //                Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
-            //                if (player.token.characterName == "Marionette")
-            //                {
-            //                    Player summoner = swappablePlayers.Where((x) => x.token.characterName == "Summoner").SingleOrDefault();
-            //                    if (summoner != null)
-            //                    {
-            //                        swappingPlayer = summoner;
-            //                    }
-            //                }
-            //                info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
-            //                int swappingIndex = playerSeats.IndexOf(swappingPlayer);
-            //                int neighbourIndex = playerSeats.IndexOf(neighbour);
-            //                neighbour.NewSeat(swappingIndex);
-            //                swappingPlayer.NewSeat(neighbourIndex);
-            //                (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
-            //            }
-            //        }
-            //        else
-            //        {
-            //            int randomIndex = Random.Shared.Next(0, 2);
-            //            CharacterType type = player.token.neighbourGuarantees[randomIndex];
-            //            if (neighbours.Item1.characterType != type)
-            //            {
-            //                List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-            //                byte typeValue = (byte)type;
-            //                while (swappablePlayers.Count == 0)
-            //                {
-            //                    typeValue++;
-            //                    if (typeValue > (byte)CharacterType.Townsfolk)
-            //                    {
-            //                        break;
-            //                    }
-            //                    type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
-            //                    swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-            //                }
-            //                info.Log($"Swapping player \"{playerSeats[player.neighbours.Item1].name}\" with a player of type \"{type}\"");
-            //                Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
-            //                info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
-            //                int swappingIndex = playerSeats.IndexOf(swappingPlayer);
-            //                int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item1]);
-            //                playerSeats[player.neighbours.Item1].NewSeat(swappingIndex);
-            //                swappingPlayer.NewSeat(neighbourIndex);
-            //                (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
-            //            }
-            //            randomIndex++;
-            //            if (randomIndex > 1)
-            //            {
-            //                randomIndex = 0;
-            //            }
-            //            type = player.token.neighbourGuarantees[randomIndex];
-            //            if (neighbours.Item2.characterType != type)
-            //            {
-            //                List<Player> swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-            //                byte typeValue = (byte)type;
-            //                while (swappablePlayers.Count == 0)
-            //                {
-            //                    typeValue++;
-            //                    if (typeValue > (byte)CharacterType.Townsfolk)
-            //                    {
-            //                        break;
-            //                    }
-            //                    type = (CharacterType)Enum.ToObject(typeof(CharacterType), typeValue);
-            //                    swappablePlayers = [..playerSeats.Where((x) => x.token.characterType == type && !x.swapSafe)];
-            //                }
-            //                info.Log($"Swapping player \"{playerSeats[player.neighbours.Item2].name}\" with a player of type \"{type}\"");
-            //                Player swappingPlayer = swappablePlayers[Random.Shared.Next(0, swappablePlayers.Count)];
-            //                info.Log($"Player \"{swappingPlayer.name}\" selected to swap");
-            //                int swappingIndex = playerSeats.IndexOf(swappingPlayer);
-            //                int neighbourIndex = playerSeats.IndexOf(playerSeats[player.neighbours.Item2]);
-            //                playerSeats[player.neighbours.Item2].NewSeat(swappingIndex);
-            //                swappingPlayer.NewSeat(neighbourIndex);
-            //                (playerSeats[swappingIndex], playerSeats[neighbourIndex]) = (playerSeats[neighbourIndex], playerSeats[swappingIndex]);
-            //            }
-            //        }
-            //    }
-            //}
             return tokens;
         }
         public List<Token> ChooseCharacters(List<Token> scriptTokens, int playerCount)
         {
             int[] counts = BaseCharacterNumbers(playerCount);
-            info.Log($"Starting counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
+            _ = info.Log($"Starting counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
             List<Token> initialPicks = [];
             for (int i = 0; i < counts.Length; i++)
             {
@@ -408,7 +247,7 @@
                                 {
                                     counts[j] -= additions[j];
                                 }
-                                info.Log($"Removing {token.characterName} changed counts by \"{-additions[0]}, {-additions[1]}, {-additions[2]}, {-additions[3]}\"");
+                                _ = info.Log($"Removing {token.characterName} changed counts by \"{-additions[0]}, {-additions[1]}, {-additions[2]}, {-additions[3]}\"");
                                 countChangers.Remove(token);
                             }
                             else
@@ -431,7 +270,7 @@
                                     {
                                         counts[j] -= additions[j];
                                     }
-                                    info.Log($"Removing {token.characterName} changed counts by \"{-additions[0]}, {-additions[1]}, {-additions[2]}, {-additions[3]}\"");
+                                    _ = info.Log($"Removing {token.characterName} changed counts by \"{-additions[0]}, {-additions[1]}, {-additions[2]}, {-additions[3]}\"");
                                     countChangers.Remove(token);
                                 }
                             }
@@ -453,7 +292,7 @@
                             counts[j] += additions[j];
                         }
                         countChangers.Add(token, additions);
-                        info.Log($"{token.characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
+                        _ = info.Log($"{token.characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
                     }
                 }
                 initialPicks = SpecialRulesAdjustments(scriptTokens, initialPicks, completedSpecialRules, out completedSpecialRules, out Dictionary<Token, int[]> specialAdditions);
@@ -486,9 +325,9 @@
                             countChangers[specialAddTokens[i]][j] += additions[j];
                         }
                     }
-                    info.Log($"{specialAddTokens[i].characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
+                    _ = info.Log($"{specialAddTokens[i].characterName} changed counts by \"{additions[0]}, {additions[1]}, {additions[2]}, {additions[3]}\"");
                 }
-                info.Log($"Current counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
+                _ = info.Log($"Current counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
                 int countsCorrected = 0;
                 for (int i = 0; i < counts.Length; i++)
                 {
@@ -505,7 +344,7 @@
                     return null;
                 }
             }
-            info.Log($"Final counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
+            _ = info.Log($"Final counts: \"{counts[0]}, {counts[1]}, {counts[2]}, {counts[3]}\"");
             return initialPicks;
         }
         public static int[] CalculateAdditions(Token token, int[] originalCounts, out bool changedCount)
@@ -608,7 +447,7 @@
                             List<Token> script = scriptTokens;
                             int removed = adjustedList.RemoveAll((x) => x != token);
                             specialCounts.Add(token, [0, 0, 0, 1]);
-                            info.Log($"(Atheist) Removing Demons and Minions");
+                            _ = info.Log($"(Atheist) Removing Demons and Minions");
                             script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType == CharacterType.Demon || x.characterType == CharacterType.Minion);
                             while (removed > 0)
                             {
@@ -619,7 +458,7 @@
                                 int index = Random.Shared.Next(0, script.Count);
                                 specialCounts[token][(int)script[index].characterType] += 1;
                                 adjustedList.Add(script[index]);
-                                info.Log($"(Atheist) Adding a {script[index].characterName}");
+                                _ = info.Log($"(Atheist) Adding a {script[index].characterName}");
                                 removed--;
                             }
                             blockEvil = true;
@@ -636,7 +475,7 @@
                                 {
                                     int removeIndex = Random.Shared.Next(0, outsiders.Count);
                                     int addIndex = Random.Shared.Next(0, availableTownsfolks.Count);
-                                    info.Log($"(Heretic) Replacing a {outsiders[removeIndex].characterName} with a {availableTownsfolks[addIndex].characterName}!");
+                                    _ = info.Log($"(Heretic) Replacing a {outsiders[removeIndex].characterName} with a {availableTownsfolks[addIndex].characterName}!");
                                     specialCounts.Add(token, [0, 0, -1, 1]);
                                     adjustedList.Remove(outsiders[removeIndex]);
                                     adjustedList.Add(availableTownsfolks[addIndex]);
@@ -649,7 +488,7 @@
                             List<Token> script = scriptTokens;
                             int removed = adjustedList.RemoveAll((x) => x.characterType == CharacterType.Minion);
                             specialCounts.Add(token, [0, -removed, 0, 0]);
-                            info.Log($"(Kazali) Removing Minions");
+                            _ = info.Log($"(Kazali) Removing Minions");
                             script.Remove(token);
                             script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType != CharacterType.Townsfolk || adjustedList.Contains(x));
                             while (removed > 0)
@@ -661,7 +500,7 @@
                                 int index = Random.Shared.Next(0, script.Count);
                                 specialCounts[token][(int)script[index].characterType] += 1;
                                 adjustedList.Add(script[index]);
-                                info.Log($"(Kazali) Adding a {script[index].characterName}");
+                                _ = info.Log($"(Kazali) Adding a {script[index].characterName}");
                                 script.RemoveAt(index);
                                 removed--;
                             }
@@ -678,7 +517,7 @@
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
                                 specialCounts[token][(int)CharacterType.Townsfolk] -= 1;
                                 specialCounts[token][(int)CharacterType.Outsider] += 1;
-                                info.Log($"(Kazali) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
+                                _ = info.Log($"(Kazali) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
                                 townsfolks.RemoveAt(townsIndex);
                                 availableOutsiders.RemoveAt(outsIndex);
                             }
@@ -689,7 +528,7 @@
                             List<Token> script = scriptTokens;
                             int removed = adjustedList.RemoveAll((x) => x.characterType == CharacterType.Minion || tokenForbidden.Contains(x.characterName));
                             specialCounts.Add(token, [0, -removed, 0, 0]);
-                            info.Log($"(Legion) Removing Minions");
+                            _ = info.Log($"(Legion) Removing Minions");
                             script.Remove(token);
                             script.RemoveAll((x) => tokenForbidden.Contains(x.characterName) || x.characterType == CharacterType.Demon || x.characterType == CharacterType.Minion || adjustedList.Contains(x));
                             while (removed > 0)
@@ -701,20 +540,20 @@
                                 int index = Random.Shared.Next(0, script.Count);
                                 specialCounts[token][(int)script[index].characterType] += 1;
                                 adjustedList.Add(script[index]);
-                                info.Log($"(Legion) Adding a {script[index].characterName}");
+                                _ = info.Log($"(Legion) Adding a {script[index].characterName}");
                                 script.RemoveAt(index);
                                 removed--;
                             }
-                            int legionCount = 1;
-                            float halfPlayers = adjustedList.Count / 2f;
-                            while (legionCount <= halfPlayers)
+                            int legionCount = 0;
+                            float halfPlayers = adjustedList.Count * (0.5f + (Random.Shared.NextSingle() / 6f));
+                            while (legionCount < halfPlayers)
                             {
                                 List<Token> toReplace = adjustedList.Where((x) => x.characterType != CharacterType.Demon).ToList();
                                 int replacingIndex = Random.Shared.Next(0, toReplace.Count);
                                 specialCounts[token][(int)toReplace[replacingIndex].characterType] -= 1;
                                 specialCounts[token][(int)token.characterType] += 1;
                                 adjustedList[adjustedList.IndexOf(toReplace[replacingIndex])] = token;
-                                info.Log($"(Legion) Replacing a {toReplace[replacingIndex].characterName} with a {token.characterName}");
+                                _ = info.Log($"(Legion) Replacing a {toReplace[replacingIndex].characterName} with a {token.characterName}");
                                 legionCount++;
                             }
                             break;
@@ -727,7 +566,7 @@
                             specialCounts.Add(token, [-1, 0, 0, 0]);
                             specialCounts[token][(int)CharacterType.Minion] += 1;
                             adjustedList[adjustedList.IndexOf(token)] = availableMinions[minionIndex];
-                            info.Log($"(Lil' Monsta) Replacing a {token.characterName} with a {availableMinions[minionIndex].characterName}");
+                            _ = info.Log($"(Lil' Monsta) Replacing a {token.characterName} with a {availableMinions[minionIndex].characterName}");
                             break;
                         }
                     case "Lord of Typhon":
@@ -746,7 +585,7 @@
                                 specialCounts[token][(int)CharacterType.Townsfolk] -= 1;
                                 specialCounts[token][(int)CharacterType.Outsider] += 1;
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
-                                info.Log($"(Lord of Typhon) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
+                                _ = info.Log($"(Lord of Typhon) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
                                 townsfolks.RemoveAt(townsIndex);
                                 availableOutsiders.RemoveAt(outsIndex);
                             }
@@ -768,7 +607,7 @@
                                 }
                                 int index = Random.Shared.Next(0, townsfolks.Count);
                                 adjustedList[adjustedList.IndexOf(townsfolks[index])] = token;
-                                info.Log($"(Village Idiot) Replacing a {townsfolks[index].characterName} with a {token.characterName}");
+                                _ = info.Log($"(Village Idiot) Replacing a {townsfolks[index].characterName} with a {token.characterName}");
                                 townsfolks.RemoveAt(index);
                             }
                             break;
@@ -789,7 +628,7 @@
                                 specialCounts[token][(int)CharacterType.Townsfolk] -= 1;
                                 specialCounts[token][(int)CharacterType.Outsider] += 1;
                                 adjustedList[adjustedList.IndexOf(townsfolks[townsIndex])] = availableOutsiders[outsIndex];
-                                info.Log($"(Xaan) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
+                                _ = info.Log($"(Xaan) Replacing a {townsfolks[townsIndex].characterName} with a {availableOutsiders[outsIndex].characterName}");
                                 townsfolks.RemoveAt(townsIndex);
                                 availableOutsiders.RemoveAt(outsIndex);
                             }
@@ -824,14 +663,14 @@
                             toReplace.Remove(finalAdditions[i].Item1);
                             if (toReplace.Count == 0)
                             {
-                                info.Log($"No valid tokens were found to replace with {finalAdditions[i].Item2.characterName}!");
+                                _ = info.Log($"No valid tokens were found to replace with {finalAdditions[i].Item2.characterName}!");
                                 continue;
                             }
                         }
                     }
                 }
                 Token replacingToken = toReplace[Random.Shared.Next(0, toReplace.Count)];
-                info.Log($"(Final Additions) Replacing a {replacingToken.characterName} with a {finalAdditions[i].Item2.characterName}");
+                _ = info.Log($"(Final Additions) Replacing a {replacingToken.characterName} with a {finalAdditions[i].Item2.characterName}");
                 specialCounts.TryAdd(finalAdditions[i].Item1, [0, 0, 0, 0]);
                 specialCounts[finalAdditions[i].Item1][(int)replacingToken.characterType] -= 1;
                 specialCounts[finalAdditions[i].Item1][(int)finalAdditions[i].Item2.characterType] += 1;
@@ -852,40 +691,221 @@
                 List<Token> availableTokens = script.Where((x) => x.characterType == removingToken.characterType && !keyForbiddenPairs.Contains(x.characterName)).ToList();
                 if (availableTokens.Count == 0)
                 {
-                    info.Log($"No available tokens to replace the {pair.Key.characterName} removed {removingToken.characterName} were found!");
+                    _ = info.Log($"No available tokens to replace the {pair.Key.characterName} removed {removingToken.characterName} were found!");
                     continue;
                 }
                 int newIndex = Random.Shared.Next(0, availableTokens.Count);
                 Token newToken = availableTokens[newIndex];
-                info.Log($"(Final Removals) Adding a {newToken.characterName} to replace a {removingToken.characterName}");
+                _ = info.Log($"(Final Removals) Adding a {newToken.characterName} to replace a {removingToken.characterName}");
                 specialCounts[pair.Key][(int)newToken.characterType] += 1;
                 adjustedList.Add(newToken);
             }
             newCompleted = completedSpecialRules;
             return adjustedList;
         }
+        public static List<(string, string)> GenerateNightOrder(bool first)
+        {
+            List<(string, string)> nightOrder = [];
+            if (first)
+            {
+                nightOrder.Add(("Lord of Typhon", "The Lord of Typhon's neighbours seperately learn that they are minions and learn their roles"));
+                nightOrder.Add(("Kazali", "Kazali chooses as many players as the grimoire allows to become a minion of their choice"));
+                nightOrder.Add(("Boffin", "Boffin and the demon learn which ability the demon gains"));
+                nightOrder.Add(("Philosopher", "Once per game, Philosopher chooses a character and gains its ability. If the chosen character is in play, it becomes drunk"));
+                nightOrder.Add(("Alchemist", "Alchemist learns what their minion ability is"));
+                nightOrder.Add(("Poppy Grower", "When the demon wakes, they do not learn who the minions are"));
+                nightOrder.Add(("Yaggababble", "Yaggababble learns their secret phrase"));
+                nightOrder.Add(("Magician", "Minions are shown both Magician and the demon to be their demon, and the demon is additionally shown Magician as one of their minions. This is done instead of minions and the demon learning their teammates"));
+                nightOrder.Add(("Minion Info", "If the game has 7 or more players, Minions learn who other Minions are and who Demon is"));
+                nightOrder.Add(("Snitch", "Each minion seperately learns 3 bluffs"));
+                nightOrder.Add(("Lunatic", "The real demon learns who Lunatic is"));
+                nightOrder.Add(("Summoner", "Summoner learns 3 bluffs"));
+                nightOrder.Add(("Demon Info", "If the game has 7 or more players, Demon learns who the Minions are and learns 3 not-in-play characters from the script"));
+                nightOrder.Add(("King", "The demon learns who King is"));
+                nightOrder.Add(("Sailor", "Sailor chooses a player. Either Sailor or the chosen player are drunk until the next night"));
+                nightOrder.Add(("Marionette", "The demon learns who the Marionette is"));
+                nightOrder.Add(("Engineer", "Once per game, Engineer chooses a demon to change the demon to, and chooses minions for the minions to become"));
+                nightOrder.Add(("Preacher", "Preacher chooses a player. If the chosen player is a minion, the minion's ability stops working and the minion learn this"));
+                nightOrder.Add(("Lil' Monsta", "Minions choose which minion holds Lil' Monsta"));
+                nightOrder.Add(("Lleech", "Lleech chooses a player to poison and become their host"));
+                nightOrder.Add(("Xaan", "Note how many outsiders are in play"));
+                nightOrder.Add(("Poisoner", "Poisoner chooses a player to be poisoned today"));
+                nightOrder.Add(("Widow", "Widow sees the grimoire and chooses a player to poison. The storyteller chooses a good player to learn the Widow is in play"));
+                nightOrder.Add(("Courtier", "Once per game, Courtier chooses a character, this character is drunk for the next 3 days"));
+                nightOrder.Add(("Wizard", "Once per game, Wizard may make a wish"));
+                nightOrder.Add(("Snake Charmer", "Snake Charmer chooses an alive player. If the chosen player is the demon, the demon and Snake Charmer swap characters and alignments, then the new Snake Charmer is poisoned"));
+                nightOrder.Add(("Godfather", "Godfather learns which outsiders are in play"));
+                nightOrder.Add(("Organ Grinder", "Organ Grinder chooses whether or not to be drunk the following day"));
+                nightOrder.Add(("Devil's Advocate", "Devil's Advocate chooses a living player to protect from execution tomorrow"));
+                nightOrder.Add(("Evil Twin", "Both twins learn who eachother are, including roles"));
+                nightOrder.Add(("Witch", "Witch chooses a player, if the chosen player nominates the following day, they die"));
+                nightOrder.Add(("Cerenovus", "Cerenovus chooses a player to be \"mad\" that they are another character tomorrow"));
+                nightOrder.Add(("Fearmonger", "Fearmonger chooses a player, if they nominate and execute them, the chosen player's team loses"));
+                nightOrder.Add(("Harpy", "Harpy chooses a player to be \"mad\" that another player is evil"));
+                nightOrder.Add(("Mezepheles", "Mezepheles learns their secret phrase"));
+                nightOrder.Add(("Pukka", "Pukka chooses a player to poison, their choice dies a day later"));
+                nightOrder.Add(("Pixie", "Pixie learns an in-play character to be \"mad\" about being"));
+                nightOrder.Add(("Huntsman", "Once per game, Huntsman chooses a player. If the chosen player is Damsel, they become a not-in-play townsfolk"));
+                nightOrder.Add(("Damsel", "The minions seperately learn that the Damsel is in play"));
+                nightOrder.Add(("Amnesiac", "If Amnesiac's ability wakes them on the 1st night, they do so"));
+                nightOrder.Add(("Washerwoman", "Washerwoman learns a townsfolk and 2 players, one of these players is that townsfolk"));
+                nightOrder.Add(("Librarian", "Librarian learns an outsider and 2 players, one of these players is that outsider. If there are no outsiders, Librarian learns this"));
+                nightOrder.Add(("Investigator", "Investigator learns a minion and 2 players, one of these players is that minion"));
+                nightOrder.Add(("Chef", "Chef learns how many pairs of evil players there are"));
+                nightOrder.Add(("Empath", "Empath learns how many of their alive neighbours are evil"));
+                nightOrder.Add(("Fortune Teller", "Fortune Teller chooses 2 players and learns if one of them registers as the demon"));
+                nightOrder.Add(("Butler", "Butler chooses a player, they can only vote tomorrow if the chosen player votes"));
+                nightOrder.Add(("Grandmother", "Grandmother learns a good player and their character"));
+                nightOrder.Add(("Clockmaker", "Clockmaker learns how many steps the demon is from their nearest minion"));
+                nightOrder.Add(("Dreamer", "Dreamer chooses a player and learns 1 good and 1 evil character, one of which is the chosen player's character"));
+                nightOrder.Add(("Seamstress", "Once per game, Seamstress chooses 2 other players. Seamstress learns if the chosen players are of the same alignment"));
+                nightOrder.Add(("Steward", "Steward learns a good player"));
+                nightOrder.Add(("Knight", "Knight learns 2 players that are not the demon"));
+                nightOrder.Add(("Noble", "Noble learns 3 players, only 1 of which is evil"));
+                nightOrder.Add(("Balloonist", "Balloonist learns a player"));
+                nightOrder.Add(("Shugenja", "Shugenja learns if the nearest evil player is clockwise or anti-clockwise. If the 2 closest evil players are equidistant from Shugenja, this information is arbitrary"));
+                nightOrder.Add(("Village Idiot", "Village Idiot chooses a player and learns their alignment"));
+                nightOrder.Add(("Bounty Hunter", "Bounty Hunter learns an evil player"));
+                nightOrder.Add(("Nightwatchman", "Once per game, Nightwatchman chooses a player. The chosen player learns who Nightwatchman is"));
+                nightOrder.Add(("Cult Leader", "Cult Leader becomes the alignment of one of their neighbours, they do not learn which alignment"));
+                nightOrder.Add(("Spy", "Spy sees the grimoire"));
+                nightOrder.Add(("Ogre", "Ogre chooses a player, they become the chosen player's alignment but do not find out what the alignment is"));
+                nightOrder.Add(("High Priestess", "High Priestess learns which player the storyteller believes they should talk to"));
+                nightOrder.Add(("General", "General learns which alignment the storyteller currently believes is winning"));
+                nightOrder.Add(("Chambermaid", "Chambermaid chooses 2 alive players and learns how many of them woke tonight due to their ability"));
+                nightOrder.Add(("Mathematician", "Mathematician learns how many character abilities worked abnormally due to another character's ability today"));
+                nightOrder.Add(("Leviathan", "At dawn, announce publicly that the Leviathan is in play"));
+                nightOrder.Add(("Vizier", "At dawn, it is publicly announced that a Vizier is in play and which player it is"));
+            }
+            else
+            {
+                nightOrder.Add(("Philosopher", "Once per game, Philosopher chooses a character and gains its ability. If the chosen character is in play, it becomes drunk"));
+                nightOrder.Add(("Poppy Grower", "If Poppy Grower died today, the demon learns who the minions are and the minions learn who the demon is"));
+                nightOrder.Add(("Sailor", "Sailor chooses a player. Either Sailor or the chosen player are drunk until the next night"));
+                nightOrder.Add(("Engineer", "Once per game, chooses a demon to change the demon to, and chooses minions for the minions to become"));
+                nightOrder.Add(("Preacher", "Preacher chooses a player. If the chosen player is a minion, their ability stops working and they learn this"));
+                nightOrder.Add(("Xaan", "On the night equalling the number of outsiders of the 1st night, all townsfolk are poisoned for the day\", desc: \"On night X, all Townsfolk are poisoned until dusk\\r[X Outsiders]"));
+                nightOrder.Add(("Poisoner", "Poisoner chooses a player to be poisoned today"));
+                nightOrder.Add(("Courtier", "Once per game, Courtier chooses a character, this character is drunk for the next 3 days"));
+                nightOrder.Add(("Innkeeper", "Innkeeper chooses 2 players, neither can die at night, and one is drunk until tomorrow night"));
+                nightOrder.Add(("Wizard", "Once per game, Wizard may make a wish"));
+                nightOrder.Add(("Gambler", "Gambler chooses a player and guesses their character, if they are incorrect they die"));
+                nightOrder.Add(("Acrobat", "Acrobat chooses a player, if their choice is drunk or poisoned, Acrobat dies"));
+                nightOrder.Add(("Snake Charmer", "Snake Charmer chooses an alive player. If the chosen player is the demon, the demon and Snake Charmer swap characters and alignments, then the new Snake Charmer is poisoned"));
+                nightOrder.Add(("Monk", "Monk chooses another player, the chosen player cannot be killed by the demon tonight"));
+                nightOrder.Add(("Organ Grinder", "Organ Grinder chooses whether or not to be drunk the following day"));
+                nightOrder.Add(("Devil's Advocate", "Devil's Advocate chooses a living player different from the last choice to protect from execution tomorrow"));
+                nightOrder.Add(("Witch", "Unless only 3 players remain, Witch chooses a player, if the chosen player nominates the following day, they die"));
+                nightOrder.Add(("Cerenovus", "Cerenovus chooses a player to be \"mad\" that they are another character tomorrow"));
+                nightOrder.Add(("Pit-Hag", "Pit-Hag chooses a player to become a character"));
+                nightOrder.Add(("Fearmonger", "Fearmonger chooses a player, if they nominate and execute them, the chosen player's team loses. If the new choice is different from the last choice, it is publicly announce that the choice has changed at dawn"));
+                nightOrder.Add(("Harpy", "Harpy chooses a player to be \"mad\" that another player is evil"));
+                nightOrder.Add(("Mezepheles", "Once per game, if a good player spoke the Mezepheles phrase today, they become evil"));
+                nightOrder.Add(("Summoner", "On the 3rd night, Summoner chooses a player to become a demon of their choice"));
+                nightOrder.Add(("Lunatic", "If Lunatic chooses to kill player(s) at night, the real demon learns this choice"));
+                nightOrder.Add(("Exorcist", "Exorcist chooses a different player from the last choice. If the demon is chosen, the demon learns who Exorcist is and does not wake to kill tonight"));
+                nightOrder.Add(("Lycanthrope", "Lycanthrope chooses a player to kill. Unless the chosen player registers as evil, they die and the demon does not kill tonight"));
+                nightOrder.Add(("Legion", "The storyteller chooses a player to kill"));
+                nightOrder.Add(("Imp", "Imp chooses a player to kill"));
+                nightOrder.Add(("Zombuul", "If nobody else died today, Zombuul chooses a player to kill"));
+                nightOrder.Add(("Pukka", "Pukka chooses a player to poison, their choice dies a day later"));
+                nightOrder.Add(("Shabaloth", "Shabaloth chooses 2 players to kill. A player they chose the night before might come back to life"));
+                nightOrder.Add(("Po", "Po chooses a player to kill. If they choose nobody, the Po chooses 3 players to kill the next night"));
+                nightOrder.Add(("Fang Gu", "Fang Gu chooses a player to kill"));
+                nightOrder.Add(("No Dashii", "No Dashii chooses a player to kill"));
+                nightOrder.Add(("Vortox", "Vortox chooses a player to kill"));
+                nightOrder.Add(("Lord of Typhon", "Lord of Typhon chooses a player to kill"));
+                nightOrder.Add(("Vigormortis", "Vigormortis chooses a player to kill"));
+                nightOrder.Add(("Ojo", "Ojo chooses a character to kill. If their choice is not in play, the storyteller chooses a player to kill"));
+                nightOrder.Add(("Al-Hadikhia", "Al-Hadikhia chooses 3 players, each chosen player chooses whether they live or die. If all 3 choose to live, they all die"));
+                nightOrder.Add(("Lleech", "Lleech chooses a player to kill"));
+                nightOrder.Add(("Lil' Monsta", "Minions choose which minion holds Lil' Monsta, the storyteller might choose a player to kill"));
+                nightOrder.Add(("Yaggababble", "The storyteller chooses to kill up to as many players as the amount of times the Yaggababble spoke their secret phrase in public the day before"));
+                nightOrder.Add(("Kazali", "Kazali chooses a player to kill"));
+                nightOrder.Add(("Assassin", "Once per game, Assassin chooses a player to kill. They die even if protected somehow"));
+                nightOrder.Add(("Godfather", "If an outsider died today, Godfather chooses a player to kill"));
+                nightOrder.Add(("Gossip", "If Gossip's statement today was true, a player dies"));
+                nightOrder.Add(("Hatter", "If Hatter died today, the minions and the demon may choose new minions and demons to become"));
+                nightOrder.Add(("Barber", "If Barber died today, the demon can choose 2 players to swap characters"));
+                nightOrder.Add(("Sweetheart", "If Sweetheart died today, the storyteller chooses a player to become drunk for the rest of the game"));
+                nightOrder.Add(("Sage", "If Sage died to the demon tonight, Sage learns that the demon is one of 2 players"));
+                nightOrder.Add(("Banshee", "If Banshee was killed by the demon, it is publicly announced that a Banshee died but not who Banshee was"));
+                nightOrder.Add(("Professor", "Once per game, Professor chooses a dead player. If the chosen player is a townsfolk, they become alive again"));
+                nightOrder.Add(("Choirboy", "If the demon killed the king tonight, Choirboy learns who the demon is"));
+                nightOrder.Add(("Huntsman", "Once per game, Huntsman chooses a player. If the chosen player is Damsel, they become a not-in-play townsfolk"));
+                nightOrder.Add(("Damsel", "Minions, that do not already know, seperately learn that the Damsel is in play"));
+                nightOrder.Add(("Amnesiac", "If Amnesiac's ability wakes them up tonight night, they do so"));
+                nightOrder.Add(("Farmer", "If Farmer died at night, another alive good player becomes a new Farmer and learns this"));
+                nightOrder.Add(("Tinker", "The storyteller may choose to kill Tinker"));
+                nightOrder.Add(("Moonchild", "If Moonchild soberly and healthily chose a good player due to their ability today, the chosen player dies"));
+                nightOrder.Add(("Grandmother", "If Grandmother's learned player is killed by the demon, Grandmother dies"));
+                nightOrder.Add(("Ravenkeeper", "If Ravenkeeper died tonight they choose a player and learn the chosen player's character"));
+                nightOrder.Add(("Empath", "Empath learns how many of their alive neighbours are evil"));
+                nightOrder.Add(("Fortune Teller", "Fortune Teller chooses 2 players and learns if one of them was the demon"));
+                nightOrder.Add(("Undertaker", "Undertaker learns the character of today's executed player"));
+                nightOrder.Add(("Dreamer", "Dreamer chooses a player and learns 1 good and 1 evil character, one of which is the chosen player's character"));
+                nightOrder.Add(("Flowergirl", "Flowergirl learns whether or not a demon voted today"));
+                nightOrder.Add(("Town Crier", "Town Crier learns if a minion nominated today"));
+                nightOrder.Add(("Oracle", "Oracle learns how many dead players are evil"));
+                nightOrder.Add(("Seamstress", "Once per game, Seamstress chooses 2 other players and learns whether or not the chosen players are of the same alignment"));
+                nightOrder.Add(("Juggler", "Juggler learns how many of the guesses they publicly made today were correct"));
+                nightOrder.Add(("Balloonist", "Balloonist learns a player of a different character type to the last player learned"));
+                nightOrder.Add(("Village Idiot", "Village Idiot chooses a player and learns their alignment"));
+                nightOrder.Add(("King", "If the number of dead players exceeds living players, King learns an alive player's character"));
+                nightOrder.Add(("Bounty Hunter", "If Bounty Hunter's last learned player dies, they learn a new evil player"));
+                nightOrder.Add(("Nightwatchman", "Once per game, Nightwatchman chooses a player. The chosen player learns who Nightwatchman is"));
+                nightOrder.Add(("Cult Leader", "Cult Leader becomes the alignment of one of their neighbours, they do not learn which alignment"));
+                nightOrder.Add(("Butler", "Butler chooses a player, they can only vote tomorrow if the chosen player votes"));
+                nightOrder.Add(("Spy", "Spy sees the grimoire"));
+                nightOrder.Add(("High Priestess", "High Priestess learns which player the storyteller believes they should talk to"));
+                nightOrder.Add(("General", "General learns which alignment the storyteller currently believes is winning"));
+                nightOrder.Add(("Chambermaid", "Chambermaid chooses 2 alive players and learns how many of them woke tonight due to their ability"));
+                nightOrder.Add(("Mathematician", "Mathematician learns how many character abilities worked abnormally due to another character's ability today"));
+                nightOrder.Add(("Leviathan", "At dawn, if 2 good players are executed, evil wins. At the dawn of the 5th day, evil wins"));
+            }
+            return nightOrder;
+        }
+        public static int GetNightOrder(string tokenName, bool first)
+        {
+            int result = -1;
+            List<(string, string)> nightOrder;
+            if (first)
+            {
+                nightOrder = firstNightOrder;
+            }
+            else
+            {
+                nightOrder = otherNightOrder;
+            }
+            IEnumerable<(string, string)> order = nightOrder.Where((x) => x.Item1 == tokenName);
+            if (order.Count() == 1)
+            {
+                result = nightOrder.IndexOf(order.Single());
+            }
+            return result;
+        }
         public static Dictionary<string, Token> GenerateDemons()
         {
             List<Token> demons = [];
-            demons.Add(new("Al-Hadikhia", otherOrder: 38, otherDesc: "Al-Hadikhia chooses 3 players, each chosen player chooses whether they live or die. If all 3 choose to live, they all die", desc: "Each night*, you may choose 3 players (all players learn who): each silently chooses to live or die, but if all live, all die"));
-            demons.Add(new("Fang Gu", addingTypes: new(outsiders: new(1)), otherOrder: 32, otherDesc: "Fang Gu chooses a player to kill", desc: "Each night*, choose a player: they die. The 1st Outsider this kills becomes an evil Fang Gu & you die instead\r[+1 Outsider]"));
-            demons.Add(new("Imp", otherOrder: 27, otherDesc: "Imp chooses a player to kill", desc: "Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp"));
-            demons.Add(new("Kazali", rule: true, firstOrder: 1, firstDesc: "Kazali chooses as many players as the grimoire allows to become a minion of their choice",  otherOrder: 42, otherDesc: "Kazali chooses a player to kill", desc: "Each night*, choose a player: they die. You choose which players are which Minions\r[-? to +? Outsiders]"));
-            demons.Add(new("Legion", removingCharacters: ["Engineer"], rule: true, otherOrder: 26, otherDesc: "The storyteller chooses a player to kill", desc: "Each night*, a player might die. Executions fail if only evil voted. You register as a Minion too\r[Most players are Legion]"));
-            demons.Add(new("Leviathan", firstOrder: 66, firstDesc: "At dawn, announce publicly that the Leviathan is in play", otherOrder: 82, otherDesc: "At dawn, if 2 good players are executed, evil wins. At the dawn of the 5th day, evil wins", desc: "If more than 1 good player is executed, evil wins. All players know you are in play. After day 5, evil wins"));
-            demons.Add(new("Lil' Monsta", removingCharacters: ["Summoner"], rule: true, firstOrder: 18, firstDesc: "Minions choose which minion holds Lil' Monsta", otherOrder: 40, otherDesc: "Minions choose which minion holds Lil' Monsta, the storyteller might choose a player to kill", desc: "Each night, Minions choose who babysits Lil' Monsta & \"is the Demon\". Each night*, a player might die\r[+1 Minion]"));
-            demons.Add(new("Lleech", firstOrder: 19, firstDesc: "Lleech chooses a player to poison and become their host", otherOrder: 39, otherDesc: "Lleech chooses a player to kill", desc: "Each night*, choose a player: they die. You start by choosing a player: they are poisoned. You die if & only if they are dead"));
-            demons.Add(new("Lord of Typhon", removingCharacters: ["Summoner"], addingTypes: new(minions: new(1)), rule: true, neighbours: [CharacterType.Minion, CharacterType.Minion], firstOrder: 0, firstDesc: "The Lord of Typhon's neighbours seperately learn that they are minions and learn their roles", otherOrder: 35, otherDesc: "Lord of Typhon chooses a player to kill", desc: "Each night*, choose a player: they die. Evil characters are in a line. You are in the middle\r[+1 Minion. -? to +? Outsiders]"));
-            demons.Add(new("No Dashii", otherOrder: 33, otherDesc: "No Dashii chooses a player to kill", desc: "Each night*, choose a player: they die. Your 2 Townsfolk neighbors are poisoned"));
-            demons.Add(new("Ojo", otherOrder: 37, otherDesc: "Ojo chooses a character to kill. If their choice is not in play, the storyteller chooses a player to kill", desc: "Each night*, choose a character: they die. If they are not in play, the Storyteller chooses who dies"));
-            demons.Add(new("Po", otherOrder: 31, otherDesc: "Po chooses a player to kill. If they choose nobody, the Po chooses 3 players to kill the next night", desc: "Each night*, you may choose a player: they die. If your last choice was no-one, choose 3 players tonight"));
-            demons.Add(new("Pukka", firstOrder: 35, firstDesc: "Pukka chooses a player to poison, their choice dies a day later", otherOrder: 29, otherDesc: "Pukka chooses a player to poison, their choice dies a day later", desc: "Each night, choose a player: they are poisoned. The previously poisoned player dies then becomes healthy"));
+            demons.Add(new("Al-Hadikhia", desc: "Each night (except the first), you may choose 3 players (all players learn who): each silently chooses to live or die, but if all live, all die"));
+            demons.Add(new("Fang Gu", addingTypes: new(outsiders: new(1)), desc: "Each night (except the first), choose a player: they die. The 1st Outsider this kills becomes an evil Fang Gu & you die instead\r[+1 Outsider]"));
+            demons.Add(new("Imp", desc: "Each night (except the first), choose a player: they die. If you kill yourself this way, a Minion becomes the Imp"));
+            demons.Add(new("Kazali", rule: true, desc: "Each night (except the first), choose a player: they die. You choose which players are which Minions\r[-? to +? Outsiders]"));
+            demons.Add(new("Legion", removingCharacters: ["Engineer"], rule: true, desc: "Each night (except the first), a player might die. Executions fail if only evil voted. You register as a Minion too\r[Most players are Legion]"));
+            demons.Add(new("Leviathan", desc: "If more than 1 good player is executed, evil wins. All players know you are in play. After day 5, evil wins"));
+            demons.Add(new("Lil' Monsta", removingCharacters: ["Summoner"], rule: true, desc: "Each night, Minions choose who babysits Lil' Monsta & \"is the Demon\". Each night (except the first), a player might die\r[+1 Minion]"));
+            demons.Add(new("Lleech", desc: "Each night (except the first), choose a player: they die. You start by choosing a player: they are poisoned. You die if & only if they are dead"));
+            demons.Add(new("Lord of Typhon", removingCharacters: ["Summoner"], addingTypes: new(minions: new(1)), rule: true, neighbours: [CharacterType.Minion, CharacterType.Minion], desc: "Each night (except the first), choose a player: they die. Evil characters are in a line. You are in the middle\r[+1 Minion. -? to +? Outsiders]"));
+            demons.Add(new("No Dashii", desc: "Each night (except the first), choose a player: they die. Your 2 Townsfolk neighbors are poisoned"));
+            demons.Add(new("Ojo", desc: "Each night (except the first), choose a character: they die. If they are not in play, the Storyteller chooses who dies"));
+            demons.Add(new("Po", desc: "Each night (except the first), you may choose a player: they die. If your last choice was no-one, choose 3 players tonight"));
+            demons.Add(new("Pukka", desc: "Each night, choose a player: they are poisoned. The previously poisoned player dies then becomes healthy"));
             demons.Add(new("Riot", desc: "On day 3, Minions become Riot & nominees die but nominate an alive player immediately. This must happen"));
-            demons.Add(new("Shabaloth", otherOrder: 30, otherDesc: "Shabaloth chooses 2 players to kill. A player they chose the night before might come back to life", desc: "Each night*, choose 2 players: they die. A dead player you chose last night might be regurgitated"));
-            demons.Add(new("Vigormortis", addingTypes: new(outsiders: new(-1)), otherOrder: 36, otherDesc: "Vigormortis chooses a player to kill", desc: "Each night*, choose a player: they die. Minions you kill keep their ability & poison 1 Townsfolk neighbor\r[-1 Outsider]"));
-            demons.Add(new("Vortox", otherOrder: 34, otherDesc: "Vortix chooses a player to kill", desc: "Each night*, choose a player: they die. Townsfolk abilities yield false info. Each day, if no-one is executed, evil wins"));
-            demons.Add(new("Yaggababble", firstOrder: 6, firstDesc: "Yaggababble learns their secret phrase", otherOrder: 41, otherDesc: "The storyteller chooses to kill up to as many players as the amount of times the Yaggababble spoke their secret phrase in public the day before", desc: "You start knowing a secret phrase. For each time you said it publicly today, a player might die"));
-            demons.Add(new("Zombuul", otherOrder: 28, otherDesc: "If nobody else died today, Zombuul chooses a player to kill", desc: "Each night*, if no-one died today, choose a player: they die. The 1st time you die, you live but register as dead"));
+            demons.Add(new("Shabaloth", desc: "Each night (except the first), choose 2 players: they die. A dead player you chose last night might be regurgitated"));
+            demons.Add(new("Vigormortis", addingTypes: new(outsiders: new(-1)), desc: "Each night (except the first), choose a player: they die. Minions you kill keep their ability & poison 1 Townsfolk neighbor\r[-1 Outsider]"));
+            demons.Add(new("Vortox", desc: "Each night (except the first), choose a player: they die. Townsfolk abilities yield false info. Each day, if no-one is executed, evil wins"));
+            demons.Add(new("Yaggababble", desc: "You start knowing a secret phrase. For each time you said it publicly today, a player might die"));
+            demons.Add(new("Zombuul", desc: "Each night (except the first), if no-one died today, choose a player: they die. The 1st time you die, you live but register as dead"));
             Dictionary<string, Token> newDict = [];
             for (int i = 0; i < demons.Count; i++)
             {
@@ -898,33 +918,33 @@
         public static Dictionary<string, Token> GenerateMinions()
         {
             List<Token> minions = [];
-            minions.Add(new("Assassin", otherOrder: 43, otherDesc: "Once per game, Assassin chooses a player to kill. They die even if protected somehow", desc: "Once per game, at night*, choose a player: they die, even if for some reason they could not"));
+            minions.Add(new("Assassin", desc: "Once per game, at night (except the first), choose a player: they die, even if for some reason they could not"));
             minions.Add(new("Baron", addingTypes: new(outsiders: new(2)), desc: "There are extra Outsiders in play\r[+2 Outsiders]"));
-            minions.Add(new("Boffin", firstOrder: 2, firstDesc: "Boffin and the demon learn which ability the demon gains", desc: "The Demon (even if drunk or poisoned) has a not-in-play good character's ability. You both know which"));
+            minions.Add(new("Boffin", desc: "The Demon (even if drunk or poisoned) has a not-in-play good character's ability. You both know which"));
             minions.Add(new("Boomdandy", desc: "If you are executed, all but 3 players die. After a 10 to 1 countdown, the player with the most players pointing at them, dies"));
-            minions.Add(new("Cerenovus", firstOrder: 31, firstDesc: "Cerenovus chooses a player to be \"mad\" that they are another character tomorrow", otherOrder: 17, otherDesc: "Cerenovus chooses a player to be \"mad\" that they are another character tomorrow", desc: "Each night, choose a player & a good character: they are \"mad\" they are this character tomorrow, or might be executed"));
-            minions.Add(new("Devil's Advocate", firstOrder: 28, firstDesc: "Devil's Advocate chooses a living player to protect from execution tomorrow", otherOrder: 15, otherDesc: "Devil's Advocate chooses a living player different from the last choice to protect from execution tomorrow", desc: "Each night, choose a living player (different to last night): if executed tomorrow, they don't die"));
-            minions.Add(new("Evil Twin", firstOrder: 29, firstDesc: "Both twins learn who eachother are", desc: "You & an opposing player know each other. If the good player is executed, evil wins. Good can't win if you both live"));
-            minions.Add(new("Fearmonger", firstOrder: 32, firstDesc: "Fearmonger chooses a player, if they nominate and execute them, the chosen player's team loses", otherOrder: 19, otherDesc: "Fearmonger chooses a player, if they nominate and execute them, the chosen player's team loses. If the new choice is different from the last choice, it is publicly announce that the choice has changed at dawn", desc: "Each night, choose a player: if you nominate & execute them, their team loses. All players know if you choose a new player"));
+            minions.Add(new("Cerenovus", desc: "Each night, choose a player & a good character: they are \"mad\" they are this character tomorrow, or might be executed"));
+            minions.Add(new("Devil's Advocate", desc: "Each night, choose a living player (different to last night): if executed tomorrow, they don't die"));
+            minions.Add(new("Evil Twin", desc: "You & an opposing player know each other. If the good player is executed, evil wins. Good can't win if you both live"));
+            minions.Add(new("Fearmonger", desc: "Each night, choose a player: if you nominate & execute them, their team loses. All players know if you choose a new player"));
             minions.Add(new("Goblin", desc: "If you publicly claim to be the Goblin when nominated & are executed that day, your team wins"));
-            minions.Add(new("Godfather", addingTypes: new(outsiders: new(-1, 1, true)), removingCharacters: ["Heretic"], firstOrder: 26, firstDesc: "Godfather learns which outsiders are in play", otherOrder: 44, otherDesc: "If an outsider died today, Godfather chooses a player to kill", desc: "You start knowing which Outsiders are in play. If 1 died today, choose a player tonight: they die\r[-1 or +1 Outsider]"));
-            minions.Add(new("Harpy", firstOrder: 33, firstDesc: "Harpy chooses a player to be \"mad\" that another player is evil", otherOrder: 20, otherDesc: "Harpy chooses a player to be \"mad\" that another player is evil", desc: "Each night, choose 2 players: tomorrow, the 1st player is mad that the 2nd is evil, or one or both might die"));
-            minions.Add(new("Marionette", neighbours: [CharacterType.Demon], firstOrder: 15, firstDesc: "The demon learns who the Marionette is", desc: "You think you are a good character, but you are not. The Demon knows who you are. You neighbor the Demon"));
+            minions.Add(new("Godfather", addingTypes: new(outsiders: new(-1, 1, true)), removingCharacters: ["Heretic"], desc: "You start knowing which Outsiders are in play. If 1 died today, choose a player tonight: they die\r[-1 or +1 Outsider]"));
+            minions.Add(new("Harpy", desc: "Each night, choose 2 players: tomorrow, the 1st player is mad that the 2nd is evil, or one or both might die"));
+            minions.Add(new("Marionette", neighbours: [CharacterType.Demon], desc: "You think you are a good character, but you are not. The Demon knows who you are. You neighbor the Demon"));
             minions.Add(new("Mastermind", desc: "If the Demon dies by execution (ending the game), play for 1 more day. If a player is then executed, their team loses"));
-            minions.Add(new("Mezepheles", firstOrder: 34, firstDesc: "Mezepheles learns their secret phrase", otherOrder: 21, otherDesc: "Once per game, if a good player spoke the Mezepheles phrase today, they become evil", desc: "You start knowing a secret word. The 1st good player to say this word becomes evil that night"));
-            minions.Add(new("Organ Grinder", firstOrder: 27, firstDesc: "Organ Grinder chooses whether or not to be drunk the following day", otherOrder: 14, otherDesc: "Organ Grinder chooses whether or not to be drunk the following day", desc: "All players keep their eyes closed when voting and the vote tally is secret. Each night, choose if you are drunk until dusk"));
-            minions.Add(new("Pit-Hag", otherOrder: 18, otherDesc: "Pit-Hag chooses a player to become a character", desc: "Each night*, choose a player & a character they become (if not in play). If a Demon is made, deaths tonight are arbitrary"));
-            minions.Add(new("Poisoner", firstOrder: 21, firstDesc: "Poisoner chooses a player to poison today", otherOrder: 6, otherDesc: "Poisoner chooses a player to poison today", desc: "Each night, choose a player: they are poisoned tonight and tomorrow day"));
+            minions.Add(new("Mezepheles", desc: "You start knowing a secret word. The 1st good player to say this word becomes evil that night"));
+            minions.Add(new("Organ Grinder", desc: "All players keep their eyes closed when voting and the vote tally is secret. Each night, choose if you are drunk until dusk"));
+            minions.Add(new("Pit-Hag", desc: "Each night (except the first), choose a player & a character they become (if not in play). If a Demon is made, deaths tonight are arbitrary"));
+            minions.Add(new("Poisoner", desc: "Each night, choose a player: they are poisoned tonight and tomorrow day"));
             minions.Add(new("Psychopath", desc: "Each day, before nominations, you may publicly choose a player: they die. If executed, you only die if you lose roshambo"));
             minions.Add(new("Scarlet Woman", desc: "If there are 5 or more players alive & the Demon dies, you become the Demon"));
-            minions.Add(new("Spy", removingCharacters: ["Heretic"], firstOrder: 60, firstDesc: "Spy sees the grimoire", otherOrder: 77, otherDesc: "Spy sees the grimoire", desc: "Each night, you see the Grimoire. You might register as good & as a Townsfolk or Outsider, even if dead"));
-            minions.Add(new("Summoner", removingCharacters: ["Lord of Typhon", "Lil' Monsta"], addingTypes: new(demons: new(-1)), firstOrder: 11, firstDesc: "Summoner learns 3 bluffs", otherOrder: 22, otherDesc: "On the 3rd night, Summoner chooses a player to become a demon of their choice", desc: "You get 3 bluffs. On the 3rd night, choose a player: they become an evil Demon of your choice\r[No Demon]"));
-            minions.Add(new("Vizier", firstOrder: 67, firstDesc: "At dawn, it is publicly announced that a Vizier is in play and which player it is", desc: "All players know you are the Vizier. You cannot die during the day. If good voted, you may choose to execute immediately"));
-            minions.Add(new("Widow", removingCharacters: ["Heretic"], firstOrder: 22, firstDesc: "Widow sees the grimoire and chooses a player to poison. The storyteller chooses a good player to learn the Widow is in play", desc: "On your 1st night, look at the Grimoire & choose a player: they are poisoned. 1 good player knows a Widow is in play"));
-            minions.Add(new("Witch", firstOrder: 30, firstDesc: "Witch chooses a player, if the chosen player nominates the following day, they die", otherOrder: 16, otherDesc: "Unless only 3 players remain, Witch chooses a player, if the chosen player nominates the following day, they die", desc: "Each night, choose a player: if they nominate tomorrow, they die. If just 3 players live, you lose this ability"));
-            minions.Add(new("Wizard", firstOrder: 24, firstDesc: "Once per game, Wizard may make a wish", otherOrder: 9, otherDesc: "Once per game, Wizard may make a wish", desc: "Once per game, choose to make a wish. If granted, it might have a price & leave a clue as to its nature"));
+            minions.Add(new("Spy", removingCharacters: ["Heretic"], desc: "Each night, you see the Grimoire. You might register as good & as a Townsfolk or Outsider, even if dead"));
+            minions.Add(new("Summoner", removingCharacters: ["Lord of Typhon", "Lil' Monsta"], addingTypes: new(demons: new(-1)), desc: "You get 3 bluffs. On the 3rd night, choose a player: they become an evil Demon of your choice\r[No Demon]"));
+            minions.Add(new("Vizier", desc: "All players know you are the Vizier. You cannot die during the day. If good voted, you may choose to execute immediately"));
+            minions.Add(new("Widow", removingCharacters: ["Heretic"], desc: "On your 1st night, look at the Grimoire & choose a player: they are poisoned. 1 good player knows a Widow is in play"));
+            minions.Add(new("Witch", desc: "Each night, choose a player: if they nominate tomorrow, they die. If just 3 players live, you lose this ability"));
+            minions.Add(new("Wizard", desc: "Once per game, choose to make a wish. If granted, it might have a price & leave a clue as to its nature"));
             minions.Add(new("Wraith", desc: "You may choose to open your eyes at night. You wake when other evil players do"));
-            minions.Add(new("Xaan", rule: true, firstOrder: 20, firstDesc: "Note how many outsiders are in play", otherOrder: 5, otherDesc: "On the night equalling the number of outsiders of the 1st night, all townsfolk are poisoned for the day", desc: "On night X, all Townsfolk are poisoned until dusk\r[X Outsiders]"));
+            minions.Add(new("Xaan", rule: true, desc: "On night X, all Townsfolk are poisoned until dusk\r[X Outsiders]"));
             Dictionary<string, Token> newDict = [];
             for (int i = 0; i < minions.Count; i++)
             {
@@ -937,28 +957,28 @@
         public static Dictionary<string, Token> GenerateOutsiders()
         {
             List<Token> outsiders = [];
-            outsiders.Add(new("Barber", otherOrder: 47, otherDesc: "If Barber died today, the demon can choose 2 players to swap characters", desc: "If you died today or tonight, the Demon may choose 2 players (not another Demon) to swap characters"));
-            outsiders.Add(new("Butler", firstOrder: 46, firstDesc: "Butler chooses a player, they can only vote tomorrow if the chosen player votes", otherOrder: 76, otherDesc: "Butler chooses a player, they can only vote tomorrow if the chosen player votes", desc: "Each night, choose a player (not yourself): tomorrow, you may only vote if they are voting too"));
-            outsiders.Add(new("Damsel", firstOrder: 38, firstDesc: "The minions seperately learn that the Damsel is in play", otherOrder: 54, otherDesc: "Minions that do not already know seperately learn that the Damsel is in play", desc: "All Minions know a Damsel is in play. If a Minion publicly guesses you (once), your team loses"));
+            outsiders.Add(new("Barber", desc: "If you died today or tonight, the Demon may choose 2 players (not another Demon) to swap characters"));
+            outsiders.Add(new("Butler", desc: "Each night, choose a player (not yourself): tomorrow, you may only vote if they are voting too"));
+            outsiders.Add(new("Damsel", desc: "All Minions know a Damsel is in play. If a Minion publicly guesses you (once), your team loses"));
             outsiders.Add(new("Drunk", desc: "You do not know you are the Drunk. You think you are a Townsfolk character, but you are not"));
             outsiders.Add(new("Golem", desc: "You may only nominate once per game. When you do, if the nominee is not the Demon, they die"));
             outsiders.Add(new("Goon", desc: "Each night, the 1st player to choose you with their ability is drunk until dusk. You become their alignment"));
-            outsiders.Add(new("Hatter", otherOrder: 46, otherDesc: "If Hatter died today, the minions and the demon may choose new minions and demons to become", desc: "If you died today or tonight, the Minion & Demon players may choose new Minion & Demon characters to be"));
+            outsiders.Add(new("Hatter", desc: "If you died today or tonight, the Minion & Demon players may choose new Minion & Demon characters to be"));
             outsiders.Add(new("Heretic", removingCharacters: ["Godfather", "Spy", "Widow"], rule: true, desc: "Whoever wins, loses & whoever loses, wins, even if you are dead"));
             outsiders.Add(new("Hermit", addingTypes: new(outsiders: new(-1, 0)), desc: "You have all Outsider abilities\r[-0 or -1 Outsider]"));
             outsiders.Add(new("Klutz", desc: "When you learn that you died, publicly choose 1 alive player: if they are evil, your team loses"));
-            outsiders.Add(new("Lunatic", firstOrder: 10, firstDesc: "The real demon learns who Lunatic is", otherOrder: 23, otherDesc: "If Lunatic chooses to kill player(s) at night, the real demon learns this choice", desc: "You think you are a Demon, but you are not. The Demon knows who you are & who you choose at night"));
-            outsiders.Add(new("Moonchild", otherOrder: 58, otherDesc: "If Moonchild died today, Moonchild chooses 1 alive player. If the chosen player was good, they die", desc: "When you learn that you died, publicly choose 1 alive player. Tonight, if it was a good player, they die"));
+            outsiders.Add(new("Lunatic", desc: "You think you are a Demon, but you are not. The Demon knows who you are & who you choose at night"));
+            outsiders.Add(new("Moonchild", desc: "When you learn that you died, publicly choose 1 alive player. Tonight, if it was a good player, they die"));
             outsiders.Add(new("Mutant", desc: "If you are \"mad\" about being an Outsider, you might be executed"));
-            outsiders.Add(new("Ogre", firstOrder: 61, firstDesc: "Ogre chooses a player, they become the chosen player's alignment but do not find out what the alignment is", desc: "On your 1st night, choose a player (not yourself): you become their alignment (you don't know which) even if drunk or poisoned"));
+            outsiders.Add(new("Ogre", desc: "On your 1st night, choose a player (not yourself): you become their alignment (you don't know which) even if drunk or poisoned"));
             outsiders.Add(new("Plague Doctor", desc: "When you die, the Storyteller gains a Minion ability"));
             outsiders.Add(new("Politician", desc: "If you were the player most responsible for your team losing, you change alignment & win, even if dead"));
             outsiders.Add(new("Puzzlemaster", desc: "1 player is drunk, even if you die. If you guess (once) who it is, learn the Demon player, but guess wrong & get false info"));
             outsiders.Add(new("Recluse", desc: "You might register as evil & as a Minion or Demon, even if dead"));
             outsiders.Add(new("Saint", desc: "If you die by execution, your team loses"));
-            outsiders.Add(new("Snitch", firstOrder: 9, firstDesc: "Each minion seperately learns 3 bluffs", desc: "Each Minion gets 3 bluffs"));
-            outsiders.Add(new("Sweetheart", otherOrder: 48, otherDesc: "If Sweetheart died today, the storyteller chooses a player to become drunk for the rest of the game", desc: "When you die, 1 player is drunk from now on"));
-            outsiders.Add(new("Tinker", otherOrder: 57, otherDesc: "The storyteller may choose to kill Tinker", desc: "You might die at any time"));
+            outsiders.Add(new("Snitch", desc: "Each Minion gets 3 bluffs"));
+            outsiders.Add(new("Sweetheart", desc: "When you die, 1 player is drunk from now on"));
+            outsiders.Add(new("Tinker", desc: "You might die at any time"));
             outsiders.Add(new("Zealot", desc: "If there are 5 or more players alive, you must vote for every nomination"));
             Dictionary<string, Token> newDict = [];
             for (int i = 0; i < outsiders.Count; i++)
@@ -972,75 +992,75 @@
         public static Dictionary<string, Token> GenerateTownsfolks()
         {
             List<Token> townsfolks = [];
-            townsfolks.Add(new("Acrobat", otherOrder: 11, otherDesc: "Acrobat chooses a player, if their choice is drunk or poisoned, Acrobat dies", desc: "Each night*, choose a player: if they are or become drunk or poisoned tonight, you die"));
-            townsfolks.Add(new("Alchemist", firstOrder: 4, firstDesc: "Alchemist learns what their minion ability is", desc: "You have a Minion ability. When using this, the Storyteller may prompt you to choose differently"));
+            townsfolks.Add(new("Acrobat", desc: "Each night (except the first), choose a player: if they are or become drunk or poisoned tonight, you die"));
+            townsfolks.Add(new("Alchemist", desc: "You have a Minion ability. When using this, the Storyteller may prompt you to choose differently"));
             townsfolks.Add(new("Alsaahir", desc: "Each day, if you publicly guess which players are Minion(s) and which are Demon(s), good wins"));
-            townsfolks.Add(new("Amnesiac", firstOrder: 39, firstDesc: "If Amnesiac's ability wakes them up on the 1st night, they do", otherOrder: 55, otherDesc: "If Amnesiac's ability wakes them up tonight night, they do", desc: "You do not know what your ability is. Each day, privately guess what it is: you learn how accurate you are"));
+            townsfolks.Add(new("Amnesiac", desc: "You do not know what your ability is. Each day, privately guess what it is: you learn how accurate you are"));
             townsfolks.Add(new("Artist", desc: "Once per game, during the day, privately ask the Storyteller any yes/no question"));
             townsfolks.Add(new("Atheist", rule: true, desc: "The Storyteller can break the game rules, and if executed, good wins, even if you are dead\r[No evil characters]"));
-            townsfolks.Add(new("Balloonist", addingTypes: new(outsiders: new(0, 1)), firstOrder: 54, firstDesc: "Balloonist learns a player", otherOrder: 70, otherDesc: "Balloonist learns a player of a different character type to the last player learned", desc: "Each night, you learn a player of a different character type than last night\r[+0 or +1 Outsider]"));
-            townsfolks.Add(new("Banshee", otherOrder: 50, otherDesc: "If Banshee was killed by the demon, it is publicly announced that a Banshee died but not who Banshee was", desc: "If the Demon kills you, all players learn this. From now on, you may nominate twice per day and vote twice per nomination"));
-            townsfolks.Add(new("Bounty Hunter", firstOrder: 57, firstDesc: "Bounty Hunter learns an evil player", otherOrder: 73, otherDesc: "If Bounty Hunter's last learned player dies, they learn a new evil player", desc: "You start knowing 1 evil player. If the player you know dies, you learn another evil player tonight\r[1 Townsfolk is evil]"));
+            townsfolks.Add(new("Balloonist", addingTypes: new(outsiders: new(0, 1)), desc: "Each night, you learn a player of a different character type than last night\r[+0 or +1 Outsider]"));
+            townsfolks.Add(new("Banshee", desc: "If the Demon kills you, all players learn this. From now on, you may nominate twice per day and vote twice per nomination"));
+            townsfolks.Add(new("Bounty Hunter", desc: "You start knowing 1 evil player. If the player you know dies, you learn another evil player tonight\r[1 Townsfolk is evil]"));
             townsfolks.Add(new("Cannibal", desc: "You have the ability of the recently killed executee. If they are evil, you are poisoned until a good player dies by execution"));
-            townsfolks.Add(new("Chambermaid", firstOrder: 64, firstDesc: "Chambermaid chooses 2 alive players and learns how many of them woke tonight due to their ability", otherOrder: 80, otherDesc: "Chambermaid chooses 2 alive players and learns how many of them woke tonight due to their ability", desc: "Each night, choose 2 alive players (not yourself): you learn how many woke tonight due to their ability"));
-            townsfolks.Add(new("Chef", firstOrder: 43, firstDesc: "Chef learns how many pairs of evil players there are", desc: "You start knowing how many pairs of evil players there are"));
-            townsfolks.Add(new("Choirboy", addingCharacters: ["King"], otherOrder: 52, otherDesc: "If the demon killed the king tonight, Choirboy learns who the demon is", desc: "If the Demon kills the King, you learn which player is the Demon\r[+the King]"));
-            townsfolks.Add(new("Clockmaker", firstOrder: 48, firstDesc: "Clockmaker learns how many steps the demon is from their nearest minion", desc: "You start knowing how many steps from the Demon to its nearest Minion"));
-            townsfolks.Add(new("Courtier", firstOrder: 23, firstDesc: "Once per game, Courtier chooses a character, this character is drunk for the next 3 days", otherOrder: 7, otherDesc: "Once per game, Courtier chooses a character, this character is drunk for the next 3 days", desc: "Once per game, at night, choose a character: they are drunk for 3 nights & 3 days"));
-            townsfolks.Add(new("Cult Leader", firstOrder: 59, firstDesc: "Cult Leader becomes the alignment of one of their neighbours, they do not learn which alignment", otherOrder: 75, otherDesc: "Cult Leader becomes the alignment of one of their neighbours, they do not learn which alignment", desc: "Each night, you become the alignment of an alive neighbor. If all good players choose to join your cult, your team wins"));
-            townsfolks.Add(new("Dreamer", firstOrder: 49, firstDesc: "Dreamer chooses a player and learns 1 good and 1 evil character, one of which is the chosen player's character", otherOrder: 64, otherDesc: "Dreamer chooses a player and learns 1 good and 1 evil character, one of which is the chosen player's character", desc: "Each night, choose a player (not yourself or Travellers): you learn 1 good & 1 evil character, 1 of which is correct"));
-            townsfolks.Add(new("Empath", firstOrder: 44, firstDesc: "Empath learns how many of their alive neighbours are evil", otherOrder: 61, otherDesc: "Empath learns how many of their alive neighbours are evil", desc: "Each night, you learn how many of your 2 alive neighbors are evil"));
-            townsfolks.Add(new("Engineer", removingCharacters: ["Legion"], firstOrder: 16, firstDesc: "Once per game, chooses a demon to change the demon to, and chooses minions for the minions to become", otherOrder: 3, otherDesc: "Once per game, chooses a demon to change the demon to, and chooses minions for the minions to become", desc: "Once per game, at night, choose which Minions or which Demon is in play"));
-            townsfolks.Add(new("Exorcist", otherOrder: 24, otherDesc: "Exorcist chooses a different player from the last choice. If the demon is chosen, the demon learns who Exorcist is and does not otherwise make choices tonight", desc: "Each night*, choose a player (different to last night): the Demon, if chosen, learns who you are then doesn't wake tonight"));
-            townsfolks.Add(new("Farmer", otherOrder: 56, otherDesc: "If Farmer died at night, another alive good player becomes a new Farmer and learns this", desc: "When you die at night, an alive good player becomes a Farmer"));
+            townsfolks.Add(new("Chambermaid", desc: "Each night, choose 2 alive players (not yourself): you learn how many woke tonight due to their ability"));
+            townsfolks.Add(new("Chef", desc: "You start knowing how many pairs of evil players there are"));
+            townsfolks.Add(new("Choirboy", addingCharacters: ["King"], desc: "If the Demon kills the King, you learn which player is the Demon\r[+the King]"));
+            townsfolks.Add(new("Clockmaker", desc: "You start knowing how many steps from the Demon to its nearest Minion"));
+            townsfolks.Add(new("Courtier", desc: "Once per game, at night, choose a character: they are drunk for 3 nights & 3 days"));
+            townsfolks.Add(new("Cult Leader", desc: "Each night, you become the alignment of an alive neighbor. If all good players choose to join your cult, your team wins"));
+            townsfolks.Add(new("Dreamer", desc: "Each night, choose a player (not yourself or Travellers): you learn 1 good & 1 evil character, 1 of which is correct"));
+            townsfolks.Add(new("Empath", desc: "Each night, you learn how many of your 2 alive neighbors are evil"));
+            townsfolks.Add(new("Engineer", removingCharacters: ["Legion"], desc: "Once per game, at night, choose which Minions or which Demon is in play"));
+            townsfolks.Add(new("Exorcist", desc: "Each night (except the first), choose a player (different to last night): the Demon, if chosen, learns who you are then doesn't wake tonight"));
+            townsfolks.Add(new("Farmer", desc: "When you die at night, an alive good player becomes a Farmer"));
             townsfolks.Add(new("Fisherman", desc: "Once per game, during the day, visit the Storyteller for some advice to help your team win"));
-            townsfolks.Add(new("Flowergirl", otherOrder: 65, otherDesc: "Flowergirl learns whether or not a demon voted today", desc: "Each night*, you learn if a Demon voted today"));
+            townsfolks.Add(new("Flowergirl", desc: "Each night (except the first), you learn if a Demon voted today"));
             townsfolks.Add(new("Fool", desc: "The 1st time you die, you don't"));
-            townsfolks.Add(new("Fortune Teller", firstOrder: 45, firstDesc: "Fortune Teller chooses 2 players and learns if one of them registers as the demon", otherOrder: 62, otherDesc: "Fortune Teller chooses 2 players and learns if one of them was the demon", desc: "Each night, choose 2 players: you learn if either is a Demon. There is a good player that registers as a Demon to you"));
-            townsfolks.Add(new("Gambler", otherOrder: 10, otherDesc: "Gambler chooses a player and guesses their character, if they are incorrect they die", desc: "Each night*, choose a player & guess their character: if you guess wrong, you die"));
-            townsfolks.Add(new("General", firstOrder: 63, firstDesc: "General learns which alignment the storyteller currently believes is winning", otherOrder: 79, otherDesc: "General learns which alignment the storyteller currently believes is winning", desc: "Each night, you learn which alignment the Storyteller believes is winning: good, evil, or neither"));
-            townsfolks.Add(new("Gossip", otherOrder: 45, otherDesc: "If Gossip's statement today was true, a player dies", desc: "Each day, you may make a public statement. Tonight, if it was true, a player dies"));
-            townsfolks.Add(new("Grandmother", firstOrder: 47, firstDesc: "Grandmother learns a good player and their character", otherOrder: 59, otherDesc: "If Grandmother's learned player is killed by the demon, Grandmother dies", desc: "You start knowing a good player & their character. If the Demon kills them, you die too"));
-            townsfolks.Add(new("High Priestess", firstOrder: 62, firstDesc: "High Priestess learns which player the storyteller believes they should talk to", otherOrder: 78, otherDesc: "High Priestess learns which player the storyteller believes they should talk to", desc: "Each night, learn which player the Storyteller believes you should talk to most"));
-            townsfolks.Add(new("Huntsman", addingCharacters: ["Damsel"], firstOrder: 37, firstDesc: "Once per game, Huntsman chooses a player. If the chosen player is Damsel, they become a not-in-play townsfolk", otherOrder: 53, otherDesc: "Once per game, Huntsman chooses a player. If the chosen player is Damsel, they become a not-in-play townsfolk", desc: "Once per game, at night, choose a living player: the Damsel, if chosen, becomes a not-in-play Townsfolk\r[+the Damsel]"));
-            townsfolks.Add(new("Innkeeper", otherOrder: 8, otherDesc: "Innkeeper chooses 2 players, neither can die at night, and one is drunk until tomorrow night", desc: "Each night*, choose 2 players: they can't die tonight, but 1 is drunk until dusk"));
-            townsfolks.Add(new("Investigator", firstOrder: 42, firstDesc: "Investigator learns a minion and 2 players, one of these players is that minion", desc: "You start knowing that 1 of 2 players is a particular Minion"));
-            townsfolks.Add(new("Juggler", otherOrder: 69, otherDesc: "Juggler learns how many of the guesses they publicly made today were correct", desc: "On your 1st day, publicly guess up to 5 players' characters. That night, you learn how many you got correct"));
-            townsfolks.Add(new("King", firstOrder: 13, firstDesc: "The demon learns who King is", otherOrder: 72, otherDesc: "If the number of dead players exceeds living players, King learns an alive player's character", desc: "Each night, if the dead equal or outnumber the living, you learn 1 alive character. The Demon knows you are the King"));
-            townsfolks.Add(new("Knight", firstOrder: 52, firstDesc: "Knight learns 2 players that are not the demon", desc: "You start knowing 2 players that are not the Demon"));
-            townsfolks.Add(new("Librarian", firstOrder: 41, firstDesc: "Librarian learns an outsider and 2 players, one of these players is that outsider. If there are no outsiders, Librarian learns this", desc: "You start knowing that 1 of 2 players is a particular Outsider (Or that zero are in play)"));
-            townsfolks.Add(new("Lycanthrope", otherOrder: 25, otherDesc: "Lycanthrope chooses a player to kill. Unless the chosen player registers as evil, they die and the demon does not kill tonight", desc: "Each night*, choose an alive player. If good, they die & the Demon doesn’t kill tonight. One good player registers as evil"));
-            townsfolks.Add(new("Magician", firstOrder: 7, firstDesc: "Minions are shown both Magician and the demon to be their demon, and the demon is additionally shown Magician as one of their minions. This is done instead of minions and the demon learning their teammates", desc: "The Demon thinks you are a Minion. Minions think you are a Demon"));
-            townsfolks.Add(new("Mathematician", firstOrder: 65, firstDesc: "Mathematician learns how many character abilities worked abnormally due to another character's ability today", otherOrder: 81, otherDesc: "Mathematician learns how many character abilities worked abnormally due to another character's ability today", desc: "Each night, you learn how many players' abilities worked abnormally (since dawn) due to another character's ability"));
+            townsfolks.Add(new("Fortune Teller", desc: "Each night, choose 2 players: you learn if either is a Demon. There is a good player that registers as a Demon to you"));
+            townsfolks.Add(new("Gambler", desc: "Each night (except the first), choose a player & guess their character: if you guess wrong, you die"));
+            townsfolks.Add(new("General", desc: "Each night, you learn which alignment the Storyteller believes is winning: good, evil, or neither"));
+            townsfolks.Add(new("Gossip", desc: "Each day, you may make a public statement. Tonight, if it was true, a player dies"));
+            townsfolks.Add(new("Grandmother", desc: "You start knowing a good player & their character. If the Demon kills them, you die too"));
+            townsfolks.Add(new("High Priestess", desc: "Each night, learn which player the Storyteller believes you should talk to most"));
+            townsfolks.Add(new("Huntsman", addingCharacters: ["Damsel"], desc: "Once per game, at night, choose a living player: the Damsel, if chosen, becomes a not-in-play Townsfolk\r[+the Damsel]"));
+            townsfolks.Add(new("Innkeeper", desc: "Each night (except the first), choose 2 players: they can't die tonight, but 1 is drunk until dusk"));
+            townsfolks.Add(new("Investigator", desc: "You start knowing that 1 of 2 players is a particular Minion"));
+            townsfolks.Add(new("Juggler", desc: "On your 1st day, publicly guess up to 5 players' characters. That night, you learn how many you got correct"));
+            townsfolks.Add(new("King", desc: "Each night, if the dead equal or outnumber the living, you learn 1 alive character. The Demon knows you are the King"));
+            townsfolks.Add(new("Knight", desc: "You start knowing 2 players that are not the Demon"));
+            townsfolks.Add(new("Librarian", desc: "You start knowing that 1 of 2 players is a particular Outsider (Or that zero are in play)"));
+            townsfolks.Add(new("Lycanthrope", desc: "Each night (except the first), choose an alive player. If good, they die & the Demon doesn’t kill tonight. One good player registers as evil"));
+            townsfolks.Add(new("Magician", desc: "The Demon thinks you are a Minion. Minions think you are a Demon"));
+            townsfolks.Add(new("Mathematician", desc: "Each night, you learn how many players' abilities worked abnormally (since dawn) due to another character's ability"));
             townsfolks.Add(new("Mayor", desc: "If only 3 players live & no execution occurs, your team wins. If you die at night, another player might die instead"));
             townsfolks.Add(new("Minstrel", desc: "When a Minion dies by execution, all other players (except Travellers) are drunk until dusk tomorrow"));
-            townsfolks.Add(new("Monk", otherOrder: 13, otherDesc: "Monk chooses another player, the chosen player cannot be killed by the demon tonight", desc: "Each night*, choose a player (not yourself): they are safe from the Demon tonight"));
-            townsfolks.Add(new("Nightwatchman", firstOrder: 58, firstDesc: "Once per game, Nightwatchman chooses a player. The chosen player learns who Nightwatchman is", otherOrder: 74, otherDesc: "Once per game, Nightwatchman chooses a player. The chosen player learns who Nightwatchman is", desc: "Once per game, at night, choose a player: they learn you are the Nightwatchman"));
-            townsfolks.Add(new("Noble", firstOrder: 53, firstDesc: "Noble learns 3 players, only 1 of which is evil", desc: "You start knowing 3 players, 1 and only 1 of which is evil"));
-            townsfolks.Add(new("Oracle", otherOrder: 67, otherDesc: "Oracle learns how many dead players are evil", desc: "Each night*, you learn how many dead players are evil"));
+            townsfolks.Add(new("Monk", desc: "Each night (except the first), choose a player (not yourself): they are safe from the Demon tonight"));
+            townsfolks.Add(new("Nightwatchman", desc: "Once per game, at night, choose a player: they learn you are the Nightwatchman"));
+            townsfolks.Add(new("Noble", desc: "You start knowing 3 players, 1 and only 1 of which is evil"));
+            townsfolks.Add(new("Oracle", desc: "Each night (except the first), you learn how many dead players are evil"));
             townsfolks.Add(new("Pacifist", desc: "Executed good players might not die"));
-            townsfolks.Add(new("Philosopher", firstOrder: 3, firstDesc: "Once per game, Philosopher chooses a character and gains its ability. If the chosen character is in play, it becomes drunk", otherOrder: 0, otherDesc: "Once per game, Philosopher chooses a character and gains its ability. If the chosen character is in play, it becomes drunk", desc: "Once per game, at night, choose a good character: gain that ability. If this character is in play, they are drunk"));
-            townsfolks.Add(new("Pixie", firstOrder: 36, firstDesc: "Pixie learns an in-play character to be \"mad\" about being", desc: "You start knowing 1 in-play Townsfolk. If you were mad that you were this character, you gain their ability when they die"));
-            townsfolks.Add(new("Poppy Grower", firstOrder: 5, firstDesc: "When the demon wakes, they do not learn who the minions are", otherOrder: 1, otherDesc: "If Poppy Grower died today, the demon learns who the minions are and the minions learn who the demon is", desc: "Minions & Demons do not know each other. If you die, they learn who each other are that night"));
-            townsfolks.Add(new("Preacher", firstOrder: 17, firstDesc: "Preacher chooses a player. If the chosen player is a minion, their ability stops working and they learn this", otherOrder: 4, otherDesc: "Preacher chooses a player. If the chosen player is a minion, their ability stops working and they learn this", desc: "Each night, choose a player: a Minion, if chosen, learns this. All chosen Minions have no ability"));
+            townsfolks.Add(new("Philosopher", desc: "Once per game, at night, choose a good character: gain that ability. If this character is in play, they are drunk"));
+            townsfolks.Add(new("Pixie", desc: "You start knowing 1 in-play Townsfolk. If you were mad that you were this character, you gain their ability when they die"));
+            townsfolks.Add(new("Poppy Grower", desc: "Minions & Demons do not know each other. If you die, they learn who each other are that night"));
+            townsfolks.Add(new("Preacher", desc: "Each night, choose a player: a Minion, if chosen, learns this. All chosen Minions have no ability"));
             townsfolks.Add(new("Princess", desc: "On your 1st day, if you nominated & executed a player, the Demon doesn’t kill tonight"));
-            townsfolks.Add(new("Professor", otherOrder: 51, otherDesc: "Once per game, Professor chooses a dead player. If the chosen player is a townsfolk, they become alive again", desc: "Once per game, at night*, choose a dead player: if they are a Townsfolk, they are resurrected"));
-            townsfolks.Add(new("Ravenkeeper", otherOrder: 60, otherDesc: "If Ravenkeeper died tonight they choose a player and learn the chosen player's character", desc: "If you die at night, you are woken to choose a player: you learn their character"));
-            townsfolks.Add(new("Sage", otherOrder: 49, otherDesc: "If Sage died to the demon tonight, Sage learns that the demon is one of 2 players", desc: "If the Demon kills you, you learn that it is 1 of 2 players"));
-            townsfolks.Add(new("Sailor", firstOrder: 14, firstDesc: "Sailor chooses a player. Either Sailor or the chosen player are drunk until the next night", otherOrder: 2, otherDesc: "Sailor chooses a player. Either Sailor or the chosen player are drunk until the next night", desc: "Each night, choose an alive player: either you or they are drunk until dusk. You can't die"));
+            townsfolks.Add(new("Professor", desc: "Once per game, at night (except the first), choose a dead player: if they are a Townsfolk, they are resurrected"));
+            townsfolks.Add(new("Ravenkeeper", desc: "If you die at night, you are woken to choose a player: you learn their character"));
+            townsfolks.Add(new("Sage", desc: "If the Demon kills you, you learn that it is 1 of 2 players"));
+            townsfolks.Add(new("Sailor", desc: "Each night, choose an alive player: either you or they are drunk until dusk. You can't die"));
             townsfolks.Add(new("Savant", desc: "Each day, you may visit the Storyteller to learn 2 things in private: 1 is true & 1 is false"));
-            townsfolks.Add(new("Seamstress", firstOrder: 50, firstDesc: "Once per game, Seamstress chooses 2 other players. Seamstress learns if the chosen players are of the same alignment", otherOrder: 68, otherDesc: "Once per game, Seamstress chooses 2 other players. Seamstress learns if the chosen players are of the same alignment", desc: "Once per game, at night, choose 2 players (not yourself): you learn if they are the same alignment"));
-            townsfolks.Add(new("Shugenja", firstOrder: 55, firstDesc: "Shugenja learns if the nearest evil player is clockwise or anti-clockwise. If the 2 closest evil players are equidistant from Shugenja, this information is arbitrary", desc: "You start knowing if your closest evil player is clockwise or anti-clockwise. If equidistant, this info is arbitrary"));
+            townsfolks.Add(new("Seamstress", desc: "Once per game, at night, choose 2 players (not yourself): you learn if they are the same alignment"));
+            townsfolks.Add(new("Shugenja", desc: "You start knowing if your closest evil player is clockwise or anti-clockwise. If equidistant, this info is arbitrary"));
             townsfolks.Add(new("Slayer", desc: "Once per game, during the day, publicly choose a player: if they are the Demon, they die"));
-            townsfolks.Add(new("Snake Charmer", firstOrder: 25, firstDesc: "Snake Charmer chooses an alive player. If the chosen player is the demon, the demon and Snake Charmer swap characters and alignments, then the new Snake Charmer is poisoned", otherOrder: 12, otherDesc: "Snake Charmer chooses an alive player. If the chosen player is the demon, the demon and Snake Charmer swap characters and alignments, then the new Snake Charmer is poisoned", desc: "Each night, choose an alive player: a chosen Demon swaps characters & alignments with you & is then poisoned"));
+            townsfolks.Add(new("Snake Charmer", desc: "Each night, choose an alive player: a chosen Demon swaps characters & alignments with you & is then poisoned"));
             townsfolks.Add(new("Soldier", desc: "You are safe from the Demon"));
-            townsfolks.Add(new("Steward", firstOrder: 51, firstDesc: "Steward learns a good player", desc: "You start knowing 1 good player"));
+            townsfolks.Add(new("Steward", desc: "You start knowing 1 good player"));
             townsfolks.Add(new("Tea Lady", desc: "If both your alive neighbors are good, they can't die"));
-            townsfolks.Add(new("Town Crier", otherOrder: 66, otherDesc: "Town Crier learns if a minion nominated today", desc: "Each night*, you learn if a Minion nominated today"));
-            townsfolks.Add(new("Undertaker", otherOrder: 63, otherDesc: "Undertaker learns the character of today's executed player", desc: "Each night*, you learn which character died by execution today"));
-            townsfolks.Add(new("Village Idiot", rule: true, firstOrder: 56, firstDesc: "Village Idiot chooses a player and learns their alignment", otherOrder: 71, otherDesc: "Village Idiot chooses a player and learns their alignment", desc: "Each night, choose a player: you learn their alignment\r[+0 to +2 Village Idiots. 1 of the extras is drunk]"));
+            townsfolks.Add(new("Town Crier", desc: "Each night (except the first), you learn if a Minion nominated today"));
+            townsfolks.Add(new("Undertaker", desc: "Each night (except the first), you learn which character died by execution today"));
+            townsfolks.Add(new("Village Idiot", rule: true, desc: "Each night, choose a player: you learn their alignment\r[+0 to +2 Village Idiots. 1 of the extras is drunk]"));
             townsfolks.Add(new("Virgin", desc: "The 1st time you are nominated, if the nominator is a Townsfolk, they are executed immediately"));
-            townsfolks.Add(new("Washerwoman", firstOrder: 40, firstDesc: "Washerwoman learns a townsfolk and 2 players, one of these players is that townsfolk", desc: "You start knowing that 1 of 2 players is a particular Townsfolk"));
+            townsfolks.Add(new("Washerwoman", desc: "You start knowing that 1 of 2 players is a particular Townsfolk"));
             Dictionary<string, Token> newDict = [];
             for (int i = 0; i < townsfolks.Count; i++)
             {
@@ -1054,7 +1074,7 @@
         {
             if (playerCount < 5 || playerCount > 15)
             {
-                info.Log("Player count is the wrong size to play BOTC!");
+                _ = info.Log("Player count is the wrong size to play BOTC!");
                 return null;
             }
             return [ 1, PrimaryMinionCount(playerCount), PrimaryOutsiderCount(playerCount), PrimaryTownsfolkCount(playerCount) ];
@@ -1117,13 +1137,13 @@
                 if (result)
                 {
                     exactScript = scriptNames[i];
-                    info.Log($"Script: \"{exactScript}\" was found!");
+                    _ = info.Log($"Script: \"{exactScript}\" was found!");
                     break;
                 }
             }
             if (!result)
             {
-                info.Log($"No script named \"{checkingScript}\" was found!");
+                _ = info.Log($"No script named \"{checkingScript}\" was found!");
             }
             return result;
         }
@@ -1146,6 +1166,10 @@
                 }
             }
             return result;
+        }
+        public static string TokenToId(string tokenName)
+        {
+            return tokenName.ToLower().Replace("-", "").Replace("'", "").Replace(" ", "");
         }
     }
 }
